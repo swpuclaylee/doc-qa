@@ -1,3 +1,4 @@
+import base64
 import tempfile
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from src.core.vector_store import vector_store_manager
 from src.models.document import DocumentStatus
 from src.repository.document import document_repo
 from src.schemas.document import DocumentOut
+from src.tasks.document import process_document
 
 # 支持的文件类型
 SUPPORTED_TYPES = {
@@ -64,20 +66,28 @@ class DocumentService:
         )
 
         # 3. 处理文档（解析 + 切片 + 向量化）
-        try:
-            await document_repo.update_status(db, doc.id, DocumentStatus.PROCESSING)
-            chunk_count = await self._process(doc.id, file_type, file_bytes)
-            await document_repo.update_status(
-                db, doc.id, DocumentStatus.DONE, chunk_count=chunk_count
-            )
-            logger.info(f"文档处理完成: id={doc.id} filename={filename} chunks={chunk_count}")
+        # try:
+        #     await document_repo.update_status(db, doc.id, DocumentStatus.PROCESSING)
+        #     chunk_count = await self._process(doc.id, file_type, file_bytes)
+        #     await document_repo.update_status(
+        #         db, doc.id, DocumentStatus.DONE, chunk_count=chunk_count
+        #     )
+        #     logger.info(f"文档处理完成: id={doc.id} filename={filename} chunks={chunk_count}")
+        #
+        # except Exception as e:
+        #     await document_repo.update_status(
+        #         db, doc.id, DocumentStatus.FAILED, error_msg=str(e)
+        #     )
+        #     logger.error(f"文档处理失败: id={doc.id} filename={filename} error={e}")
+        #     raise
 
-        except Exception as e:
-            await document_repo.update_status(
-                db, doc.id, DocumentStatus.FAILED, error_msg=str(e)
-            )
-            logger.error(f"文档处理失败: id={doc.id} filename={filename} error={e}")
-            raise
+        # 发送 Celery 任务（file_bytes 需要 base64 编码才能序列化）
+        """
+        Celery 任务参数通过 Redis 传递，必须是 JSON 可序列化的。
+        bytes 类型不能直接序列化，所以要先 base64 编码成字符串，Worker 收到后再解码回 bytes。
+        """
+        file_bytes_b64 = base64.b64encode(file_bytes).decode()
+        process_document.delay(doc.id, file_bytes_b64, file_type)
 
         # 4. 返回最新状态
         doc = await document_repo.get(db, doc.id)
