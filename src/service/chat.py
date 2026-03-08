@@ -1,3 +1,5 @@
+import json
+import time
 from collections.abc import AsyncGenerator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -10,6 +12,7 @@ from src.core.hybrid_search import hybrid_searcher
 from src.models.conversation import MessageRole
 from src.repository.conversation import conversation_repo
 from src.repository.document import document_repo
+from src.repository.llm_trace import llm_trace_repo
 from src.schemas.chat import ChatHistoryOut, ConversationOut
 
 SYSTEM_PROMPT = """你是一个专业的文档问答助手。
@@ -63,6 +66,14 @@ class ChatService:
         messages.append(HumanMessage(content=question))
         return messages
 
+    def _format_prompt_for_trace(self, messages: list) -> str:
+        """把消息列表格式化为可读字符串，用于日志记录"""
+        lines = []
+        for msg in messages:
+            role = msg.__class__.__name__.replace("Message", "").upper()
+            lines.append(f"[{role}]\n{msg.content}")
+        return "\n\n".join(lines)
+
     async def chat_stream(
         self,
         db: AsyncSession,
@@ -92,11 +103,6 @@ class ChatService:
             return
 
         # 2. 检索相关文档切片
-        # retrieved_docs = await vector_store_manager.similarity_search(
-        #     document_id=document_id,
-        #     query=question,
-        #     k=4,
-        # )
         retrieved_docs = await hybrid_searcher.search(
             db=db,
             document_id=document_id,
@@ -108,11 +114,17 @@ class ChatService:
         context = "\n\n".join([d.page_content for d in retrieved_docs])
         logger.debug(f"检索到 {len(retrieved_docs)} 个切片 session={session_id}")
 
-        # 3. 拉取对话历史
+        retrieved_chunks_json = json.dumps(
+            [d.page_content for d in retrieved_docs],
+            ensure_ascii=False,
+        )
+
+        # 3. 拉取历史，组装消息
         history = await conversation_repo.get_by_session(db, session_id)
 
         # 4. 组装消息
         messages = self._build_messages(context, history, question)
+        prompt_str = self._format_prompt_for_trace(messages)
 
         # 5. 存储用户消息
         await conversation_repo.add_message(
@@ -122,6 +134,9 @@ class ChatService:
         # 6. 流式调用 LLM，逐 token yield
         llm = self._build_llm()
         full_response = []
+        start_time = time.time()
+        status = "success"
+        error_msg = None
 
         try:
             async for chunk in llm.astream(messages):
@@ -131,16 +146,44 @@ class ChatService:
                     yield token
 
         except Exception as e:
+            status = "failed"
+            error_msg = str(e)
             logger.error(f"LLM 调用失败: {e}")
             yield f"\n\n[错误：{str(e)}]"
-            return
 
-        # 7. 流式结束后，把完整回答存入数据库
-        full_answer = "".join(full_response)
-        await conversation_repo.add_message(
-            db, session_id, document_id, MessageRole.ASSISTANT, full_answer
-        )
-        logger.info(f"问答完成 session={session_id} answer_len={len(full_answer)}")
+        finally:
+            latency_ms = (time.time() - start_time) * 1000
+            full_answer = "".join(full_response)
+
+            # 7. 存 LLM 回答
+            if full_answer:
+                await conversation_repo.add_message(
+                    db, session_id, document_id, MessageRole.ASSISTANT, full_answer
+                )
+
+            # 8. 写链路日志
+            await llm_trace_repo.create_trace(
+                db,
+                {
+                    "session_id": session_id,
+                    "document_id": document_id,
+                    "question": question,
+                    "retrieved_chunks": retrieved_chunks_json,
+                    "prompt": prompt_str,
+                    "answer": full_answer,
+                    "latency_ms": round(latency_ms, 2),
+                    "model_name": "deepseek-chat",
+                    "status": status,
+                    "error_msg": error_msg,
+                },
+            )
+
+            logger.info(
+                f"问答完成 session={session_id} "
+                f"latency={latency_ms:.0f}ms "
+                f"answer_len={len(full_answer)} "
+                f"status={status}"
+            )
 
     async def get_history(
         self, db: AsyncSession, session_id: str, document_id: int
