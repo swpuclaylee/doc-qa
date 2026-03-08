@@ -94,6 +94,27 @@ services:
     networks:
       - doc-qa-network
 
+  # ==================== Celery Worker ====================
+  celery-worker:
+    image: backend:latest
+    container_name: celery-worker
+    restart: always
+    user: "root"
+    volumes:
+      - /opt/doc-qa:/app
+    working_dir: /app
+    command: >
+      celery -A src.core.celery_app.celery_app worker
+      -l info
+      -P prefork
+      --concurrency=4
+      --logfile=logs/celery.log
+    depends_on:
+      - postgresql
+      - redis
+    networks:
+      - fastapi-network
+
 
 # ==================== 网络配置 ====================
 networks:

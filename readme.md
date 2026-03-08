@@ -145,3 +145,8 @@ POST   /api/v1/chat                 问答（SSE 流式）
 GET    /api/v1/chat/{session_id}    获取对话历史
 DELETE /api/v1/chat/{session_id}    清空对话历史
 ```
+
+## celery win启动命令
+
+>celery -A src.core.celery_app worker --loglevel=info -P solo --logfile=logs/celery.log
+
