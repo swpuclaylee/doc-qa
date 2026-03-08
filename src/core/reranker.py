@@ -1,4 +1,3 @@
-from loguru import logger
 
 
 class Reranker:
@@ -27,7 +26,6 @@ class Reranker:
             "BAAI/bge-reranker-base",
             max_length=512,
         )
-        logger.info("Rerank 模型已加载")
 
     @property
     def model(self):

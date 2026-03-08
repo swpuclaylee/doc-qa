@@ -89,8 +89,6 @@ class DocumentService:
         file_bytes_b64 = base64.b64encode(file_bytes).decode()
         process_document.delay(doc.id, file_bytes_b64, file_type)
 
-        # 4. 返回最新状态
-        doc = await document_repo.get(db, doc.id)
         return DocumentOut.model_validate(doc)
 
     async def _process(

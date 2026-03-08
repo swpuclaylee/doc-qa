@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
+from src.core.rate_limit.decorators import rate_limit
 from src.schemas.base import PaginatedResponse, ResponseModel
 from src.schemas.document import DocumentOut
 from src.service.document import document_service
@@ -25,7 +26,9 @@ ALLOWED_CONTENT_TYPES = {
     status_code=status.HTTP_201_CREATED,
     summary="上传文档",
 )
+@rate_limit(limit=20, window=60, algorithm="fixed", target="ip")
 async def upload_document(
+    request: Request,
     file: UploadFile = File(..., description="支持 PDF、Word、TXT"),
     db: AsyncSession = Depends(get_db),
 ):

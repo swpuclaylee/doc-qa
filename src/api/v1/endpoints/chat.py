@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
+from src.core.rate_limit.decorators import rate_limit
 from src.schemas.base import ResponseModel
 from src.schemas.chat import ChatHistoryOut, ChatRequest
 from src.service.chat import chat_service
@@ -15,7 +16,9 @@ router = APIRouter(prefix="/chat", tags=["问答"])
     summary="流式问答（SSE）",
     response_description="text/event-stream 流式返回回答内容",
 )
+@rate_limit(limit=20, window=60, algorithm="sliding", target="ip")
 async def chat(
+    request: Request,
     req: ChatRequest,
     db: AsyncSession = Depends(get_db),
 ):
