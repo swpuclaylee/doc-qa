@@ -113,7 +113,7 @@ services:
       - doc-qa-postgresql
       - doc-qa-redis
     networks:
-      - fastapi-network
+      - doc-qa-network
 
 
 # ==================== 网络配置 ====================
