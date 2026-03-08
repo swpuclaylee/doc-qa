@@ -96,7 +96,7 @@ services:
 
   # ==================== Celery Worker ====================
   celery-worker:
-    image: backend:latest
+    image: doc-qa-backend:latest
     container_name: celery-worker
     restart: always
     user: "root"
@@ -110,8 +110,8 @@ services:
       --concurrency=4
       --logfile=logs/celery.log
     depends_on:
-      - postgresql
-      - redis
+      - doc-qa-postgresql
+      - doc-qa-redis
     networks:
       - fastapi-network
 
