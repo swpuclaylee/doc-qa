@@ -50,10 +50,6 @@ FastAPI
 - 用 LangChain Agent 替换简单的 Chain
 - 让模型自主决定是检索文档还是调用工具
 
-## deepseek api key
-
-sk-01fd15dfd7124a4d9a8179feedd767a8
-
 ## 目录结构
 
 ```
