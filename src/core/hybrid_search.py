@@ -1,9 +1,9 @@
 import jieba
 from langchain_core.documents import Document
-from loguru import logger
 from rank_bm25 import BM25Okapi
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.reranker import reranker
 from src.core.vector_store import vector_store_manager
 from src.repository.chunk import chunk_repo
 
@@ -38,7 +38,7 @@ class HybridSearcher:
             fetch_k: 每路检索的候选数量
 
         Returns:
-            融合排序后的 Top-K Document 列表
+            融合精排序后的 Top-K Document 列表
         """
         # 1. 向量检索
         vector_results = await vector_store_manager.similarity_search(
@@ -46,17 +46,20 @@ class HybridSearcher:
             query=query,
             k=fetch_k,
         )
-        logger.debug(f"向量检索结果: {len(vector_results)} 条")
 
         # 2. BM25 检索
         bm25_results = await self._bm25_search(db, document_id, query, k=fetch_k)
-        logger.debug(f"BM25 检索结果: {len(bm25_results)} 条")
 
-        # 3. RRF 融合
-        fused = self._rrf_fusion(vector_results, bm25_results, k=k)
-        logger.debug(f"融合后结果: {len(fused)} 条")
+        # 3. RRF 融合，得到 Top-20 候选
+        candidates = self._rrf_fusion(vector_results, bm25_results, k=fetch_k)
 
-        return fused
+        # 4. Rerank 精排，从 Top-20 里取 Top-K
+        if candidates:
+            texts = [doc.page_content for doc in candidates]
+            top_indices = reranker.rerank(query, texts, top_k=k)
+            return [candidates[i] for i in top_indices]
+
+        return candidates[:k]
 
     async def _bm25_search(
         self,

@@ -6,6 +6,7 @@ from loguru import logger
 from src.core.cache.cache import close_redis, init_redis
 from src.core.config import STATIC_DIR
 from src.core.embedding import embedding_manager
+from src.core.reranker import reranker
 from src.db.init_db import close_db, init_db
 
 
@@ -30,6 +31,9 @@ async def lifespan(app: FastAPI):
 
     embedding_manager.init()
     logger.info("Embedding 模型已加载")
+
+    reranker.init()
+    logger.info("Rerank 模型已加载")
 
     # 3. 创建静态目录
     STATIC_DIR.mkdir(parents=True, exist_ok=True)

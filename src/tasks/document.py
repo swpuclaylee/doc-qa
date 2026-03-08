@@ -42,6 +42,7 @@ async def _process_document_async(
 
     from src.core.config import settings
     from src.core.embedding import embedding_manager
+    from src.core.reranker import reranker
     from src.core.vector_store import vector_store_manager
     from src.db.session import db_manager
     from src.models.document import DocumentStatus
@@ -63,6 +64,9 @@ async def _process_document_async(
     # 初始化 Embedding 模型
     if embedding_manager._model is None:
         embedding_manager.init()
+
+    if reranker._model is None:
+        reranker.init()
 
     # 解码文件内容
     file_bytes = base64.b64decode(file_bytes_b64)
