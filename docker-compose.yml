@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # ==================== FastAPI 应用 ====================
+  doc-qa-backend:
+    image: doc-qa-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: doc_qa_backend
+    restart: always
+    user: "root"
+    ports:
+      - "20020:8000"
+    volumes:
+      - /opt/doc-qa:/app
+    working_dir: /app
+    command: >
+      bash -c "alembic upgrade head || exit 1 && 
+      gunicorn src.main:app
+      --workers ${WORKERS:-4}
+      --worker-class uvicorn.workers.UvicornWorker
+      --bind 0.0.0.0:8000
+      --access-logfile -
+      --error-logfile -"
+    depends_on:
+      - doc-qa-postgresql
+      - doc-qa-redis
+      - doc-qa-minio
+    networks:
+      - doc-qa-network
+
+  # ==================== PostgreSQL ====================
+  doc-qa-postgresql:
+    image: postgres:16.7-alpine
+    container_name: doc_qa_postgres
+    restart: always
+    ports:
+      - "20022:5432"
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+      - TZ=Asia/Shanghai
+    volumes:
+      - /opt/doc-qa-data/postgresql:/var/lib/postgresql/data
+    networks:
+      - doc-qa-network
+
+  # ==================== Redis ====================
+  doc-qa-redis:
+    image: redis:7-alpine
+    container_name: doc_qa_redis
+    restart: always
+    user: "root"
+    ports:
+      - "20023:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - /opt/doc-qa-data/redis:/data
+    networks:
+      - doc-qa-network
+
+  # ==================== MinIO ====================
+  doc-qa-minio:
+    image: minio/minio:latest
+    container_name: doc_qa_minio
+    restart: always
+    user: "root"
+    ports:
+      - "20024:9000"
+      - "20025:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    volumes:
+      - /opt/doc-qa-data/minio/data:/data
+      - /opt/doc-qa-data/minio/config:/root/.minio
+    command: server /data --console-address ":9001"
+    networks:
+      - doc-qa-network
+
+  # ==================== 向量数据库 ====================
+  doc-qa-chroma:
+    image: chromadb/chroma:latest
+    container_name: doc_qa_chroma
+    ports:
+      - "20027:8000"
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+    volumes:
+      - /opt/doc-qa-data/chroma_data:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - doc-qa-network
+
+
+# ==================== 网络配置 ====================
+networks:
+  doc-qa-network:
+    driver: bridge

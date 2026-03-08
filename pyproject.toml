@@ -1,0 +1,132 @@
+[tool.poetry]
+name = "doc-qa"
+version = "0.1.0"
+description = "智能文档问答系统"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+# FastAPI 核心
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+gunicorn = "^21.2.0"
+
+# LLM 框架（升级到最新 1.x 系列，兼容 Chroma 1.3+）
+langchain = "^1.1.0"
+langchain-openai = "^1.1.0"        # DeepSeek 兼容 OpenAI 接口
+langchain-community = "^0.3.0"
+langchain-chroma = "^1.1.0"
+langchain-text-splitters = "^1.1.1"
+
+# 向量数据库
+chromadb = "^1.3.5"                 # 与 langchain-chroma 兼容
+
+# Embedding（本地运行）
+sentence-transformers = "^3.0.0"
+
+# 文档处理
+pypdf = "^4.0.0"
+python-docx = "^1.1.0"
+python-multipart = "^0.0.9"        # 文件上传
+
+
+# 数据库
+sqlalchemy = "^2.0.25"
+asyncpg = "^0.29.0"
+alembic = "^1.13.1"
+
+
+# Redis
+redis = "^5.0.1"
+
+# 认证和安全
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+
+# 配置管理
+pydantic = "^2.5.3"
+pydantic-settings = "^2.1.0"
+
+# 日志
+loguru = "^0.7.2"
+
+# MinIO
+minio = "^7.2.3"
+
+# 工具库
+pandas = "^2.1.4"
+openpyxl = "^3.1.2"
+pillow = "^10.2.0"
+fastapi-pagination = "^0.15.0"
+
+# 定时任务
+apscheduler = "^3.10.4"
+celery = "^5.3.0"
+docx2txt = "^0.9"
+
+[tool.poetry.group.dev.dependencies]
+# 测试
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+pytest-cov = "^4.1.0"
+
+# 代码质量
+black = "^23.12.0"
+ruff = "^0.1.8"
+mypy = "^1.7.0"
+
+# 开发工具
+ipython = "^8.18.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | build
+  | dist
+  | migrations
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=src --cov-report=term-missing"
+asyncio_mode = "auto"
