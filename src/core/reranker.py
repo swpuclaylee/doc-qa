@@ -1,5 +1,3 @@
-
-
 class Reranker:
     """
     Rerank 重排序器

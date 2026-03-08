@@ -27,6 +27,9 @@ SYSTEM_PROMPT = """你是一个专业的文档问答助手。
 {context}
 """
 
+# 上下文 token 预算（为检索内容和回答留出空间）
+MAX_HISTORY_TOKENS = 2000
+
 
 class ChatService:
     def _build_llm(self) -> ChatOpenAI:
@@ -39,6 +42,18 @@ class ChatService:
             streaming=True,
         )
 
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        估算文本的 token 数
+
+        粗略规则：
+        - 中文字符：1 字 ≈ 1 token
+        - 英文/其他：4 字符 ≈ 1 token
+        """
+        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+        other_chars = len(text) - chinese_chars
+        return chinese_chars + other_chars // 4
+
     def _build_messages(
         self,
         context: str,
@@ -46,17 +61,32 @@ class ChatService:
         question: str,
     ) -> list:
         """
-        组装发送给 LLM 的消息列表
+        组装消息列表，按 token 预算动态截断历史
 
-        结构：
-          SystemMessage（含检索到的文档内容）
-          + HumanMessage / AIMessage（历史对话，最近 10 条）
-          + HumanMessage（当前问题）
+        优先保留最近的对话，超出预算的早期消息直接丢弃。
         """
         messages = [SystemMessage(content=SYSTEM_PROMPT.format(context=context))]
 
-        # 加入历史对话（最近 10 条，避免 token 超限）
-        for msg in history[-10:]:
+        # 从最新消息往最旧遍历，累计 token 数不超过预算
+        total_tokens = 0
+        trimmed_history = []
+
+        for msg in reversed(history):
+            tokens = self._estimate_tokens(msg.content)
+            if total_tokens + tokens > MAX_HISTORY_TOKENS:
+                break
+            trimmed_history.insert(0, msg)
+            total_tokens += tokens
+
+        if len(trimmed_history) < len(history):
+            logger.debug(
+                f"历史消息截断: 原始 {len(history)} 条 "
+                f"→ 保留 {len(trimmed_history)} 条 "
+                f"token 预算 {MAX_HISTORY_TOKENS}"
+            )
+
+        # 加入历史消息
+        for msg in trimmed_history:
             if msg.role == MessageRole.USER:
                 messages.append(HumanMessage(content=msg.content))
             else:
@@ -65,6 +95,33 @@ class ChatService:
         # 加入当前问题
         messages.append(HumanMessage(content=question))
         return messages
+
+    # def _build_messages(
+    #     self,
+    #     context: str,
+    #     history: list,
+    #     question: str,
+    # ) -> list:
+    #     """
+    #     组装发送给 LLM 的消息列表
+    #
+    #     结构：
+    #       SystemMessage（含检索到的文档内容）
+    #       + HumanMessage / AIMessage（历史对话，最近 10 条）
+    #       + HumanMessage（当前问题）
+    #     """
+    #     messages = [SystemMessage(content=SYSTEM_PROMPT.format(context=context))]
+    #
+    #     # 加入历史对话（最近 10 条，避免 token 超限）
+    #     for msg in history[-10:]:
+    #         if msg.role == MessageRole.USER:
+    #             messages.append(HumanMessage(content=msg.content))
+    #         else:
+    #             messages.append(AIMessage(content=msg.content))
+    #
+    #     # 加入当前问题
+    #     messages.append(HumanMessage(content=question))
+    #     return messages
 
     def _format_prompt_for_trace(self, messages: list) -> str:
         """把消息列表格式化为可读字符串，用于日志记录"""
