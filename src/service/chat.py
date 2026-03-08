@@ -1,4 +1,3 @@
-import json
 import time
 from collections.abc import AsyncGenerator
 
@@ -7,8 +6,8 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.agent.executor import agent_runner
 from src.core.config import settings
-from src.core.hybrid_search import hybrid_searcher
 from src.models.conversation import MessageRole
 from src.repository.conversation import conversation_repo
 from src.repository.document import document_repo
@@ -138,19 +137,7 @@ class ChatService:
         session_id: str,
         question: str,
     ) -> AsyncGenerator[str, None]:
-        """
-        流式问答，返回一个异步生成器，逐 token yield 回答内容
-
-        Args:
-            db: 数据库会话
-            document_id: 针对哪个文档提问
-            session_id: 会话 ID
-            question: 用户问题
-
-        Yields:
-            str: 每次 yield 一个 token
-        """
-        # 1. 校验文档存在且处理完成
+        # 1. 校验文档
         doc = await document_repo.get(db, document_id)
         if not doc:
             yield "错误：文档不存在"
@@ -159,74 +146,54 @@ class ChatService:
             yield f"错误：文档尚未处理完成（当前状态：{doc.status.value}）"
             return
 
-        # 2. 检索相关文档切片
-        retrieved_docs = await hybrid_searcher.search(
-            db=db,
-            document_id=document_id,
-            query=question,
-            k=4,
-            fetch_k=20,
-        )
-
-        context = "\n\n".join([d.page_content for d in retrieved_docs])
-        logger.debug(f"检索到 {len(retrieved_docs)} 个切片 session={session_id}")
-
-        retrieved_chunks_json = json.dumps(
-            [d.page_content for d in retrieved_docs],
-            ensure_ascii=False,
-        )
-
-        # 3. 拉取历史，组装消息
+        # 2. 拉取历史
         history = await conversation_repo.get_by_session(db, session_id)
 
-        # 4. 组装消息
-        messages = self._build_messages(context, history, question)
-        prompt_str = self._format_prompt_for_trace(messages)
-
-        # 5. 存储用户消息
+        # 3. 存用户消息
         await conversation_repo.add_message(
             db, session_id, document_id, MessageRole.USER, question
         )
 
-        # 6. 流式调用 LLM，逐 token yield
-        llm = self._build_llm()
+        # 4. 执行 Agent 流式推理
         full_response = []
         start_time = time.time()
         status = "success"
         error_msg = None
 
         try:
-            async for chunk in llm.astream(messages):
-                token = chunk.content
-                if token:
-                    full_response.append(token)
-                    yield token
+            async for token in agent_runner.run_stream(
+                db=db,
+                document_id=document_id,
+                session_id=session_id,
+                question=question,
+                history=history,
+            ):
+                full_response.append(token)
+                yield token
 
         except Exception as e:
             status = "failed"
             error_msg = str(e)
-            logger.error(f"LLM 调用失败: {e}")
             yield f"\n\n[错误：{str(e)}]"
 
         finally:
             latency_ms = (time.time() - start_time) * 1000
             full_answer = "".join(full_response)
 
-            # 7. 存 LLM 回答
             if full_answer:
                 await conversation_repo.add_message(
                     db, session_id, document_id, MessageRole.ASSISTANT, full_answer
                 )
 
-            # 8. 写链路日志
+            # 写链路日志
             await llm_trace_repo.create_trace(
                 db,
                 {
                     "session_id": session_id,
                     "document_id": document_id,
                     "question": question,
-                    "retrieved_chunks": retrieved_chunks_json,
-                    "prompt": prompt_str,
+                    "retrieved_chunks": None,  # Agent 自主决定是否检索
+                    "prompt": question,
                     "answer": full_answer,
                     "latency_ms": round(latency_ms, 2),
                     "model_name": "deepseek-chat",
@@ -235,12 +202,116 @@ class ChatService:
                 },
             )
 
-            logger.info(
-                f"问答完成 session={session_id} "
-                f"latency={latency_ms:.0f}ms "
-                f"answer_len={len(full_answer)} "
-                f"status={status}"
-            )
+    # async def chat_stream(
+    #     self,
+    #     db: AsyncSession,
+    #     document_id: int,
+    #     session_id: str,
+    #     question: str,
+    # ) -> AsyncGenerator[str, None]:
+    #     """
+    #     流式问答，返回一个异步生成器，逐 token yield 回答内容
+    #
+    #     Args:
+    #         db: 数据库会话
+    #         document_id: 针对哪个文档提问
+    #         session_id: 会话 ID
+    #         question: 用户问题
+    #
+    #     Yields:
+    #         str: 每次 yield 一个 token
+    #     """
+    #     # 1. 校验文档存在且处理完成
+    #     doc = await document_repo.get(db, document_id)
+    #     if not doc:
+    #         yield "错误：文档不存在"
+    #         return
+    #     if doc.status.value != "done":
+    #         yield f"错误：文档尚未处理完成（当前状态：{doc.status.value}）"
+    #         return
+    #
+    #     # 2. 检索相关文档切片
+    #     retrieved_docs = await hybrid_searcher.search(
+    #         db=db,
+    #         document_id=document_id,
+    #         query=question,
+    #         k=4,
+    #         fetch_k=20,
+    #     )
+    #
+    #     context = "\n\n".join([d.page_content for d in retrieved_docs])
+    #     logger.debug(f"检索到 {len(retrieved_docs)} 个切片 session={session_id}")
+    #
+    #     retrieved_chunks_json = json.dumps(
+    #         [d.page_content for d in retrieved_docs],
+    #         ensure_ascii=False,
+    #     )
+    #
+    #     # 3. 拉取历史，组装消息
+    #     history = await conversation_repo.get_by_session(db, session_id)
+    #
+    #     # 4. 组装消息
+    #     messages = self._build_messages(context, history, question)
+    #     prompt_str = self._format_prompt_for_trace(messages)
+    #
+    #     # 5. 存储用户消息
+    #     await conversation_repo.add_message(
+    #         db, session_id, document_id, MessageRole.USER, question
+    #     )
+    #
+    #     # 6. 流式调用 LLM，逐 token yield
+    #     llm = self._build_llm()
+    #     full_response = []
+    #     start_time = time.time()
+    #     status = "success"
+    #     error_msg = None
+    #
+    #     try:
+    #         async for chunk in llm.astream(messages):
+    #             token = chunk.content
+    #             if token:
+    #                 full_response.append(token)
+    #                 yield token
+    #
+    #     except Exception as e:
+    #         status = "failed"
+    #         error_msg = str(e)
+    #         logger.error(f"LLM 调用失败: {e}")
+    #         yield f"\n\n[错误：{str(e)}]"
+    #
+    #     finally:
+    #         latency_ms = (time.time() - start_time) * 1000
+    #         full_answer = "".join(full_response)
+    #
+    #         # 7. 存 LLM 回答
+    #         if full_answer:
+    #             await conversation_repo.add_message(
+    #                 db, session_id, document_id, MessageRole.ASSISTANT, full_answer
+    #             )
+    #
+    #         # 8. 写链路日志
+    #         await llm_trace_repo.create_trace(
+    #             db,
+    #             {
+    #                 "session_id": session_id,
+    #                 "document_id": document_id,
+    #                 "question": question,
+    #                 "retrieved_chunks": retrieved_chunks_json,
+    #                 "prompt": prompt_str,
+    #                 "answer": full_answer,
+    #                 "latency_ms": round(latency_ms, 2),
+    #                 "model_name": "deepseek-chat",
+    #                 "status": status,
+    #                 "error_msg": error_msg,
+    #             },
+    #         )
+    #
+    #         logger.info(
+    #             f"问答完成 session={session_id} "
+    #             f"latency={latency_ms:.0f}ms "
+    #             f"answer_len={len(full_answer)} "
+    #             f"status={status}"
+    #         )
 
     async def get_history(
         self, db: AsyncSession, session_id: str, document_id: int
