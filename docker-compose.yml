@@ -97,7 +97,7 @@ services:
   # ==================== Celery Worker ====================
   celery-worker:
     image: doc-qa-backend:latest
-    container_name: celery-worker
+    container_name: doc_qa_celery-worker
     restart: always
     user: "root"
     volumes:
