@@ -13,6 +13,7 @@ from src.repository.conversation import conversation_repo
 from src.repository.document import document_repo
 from src.repository.llm_trace import llm_trace_repo
 from src.schemas.chat import ChatHistoryOut, ConversationOut
+from src.core.cache.redis_ops import redis_cache
 
 SYSTEM_PROMPT = """你是一个专业的文档问答助手。
 请根据以下从文档中检索到的相关内容，回答用户的问题。
@@ -167,6 +168,7 @@ class ChatService:
                 session_id=session_id,
                 question=question,
                 history=history,
+                redis_client=redis_cache,  # 新增
             ):
                 full_response.append(token)
                 yield token
