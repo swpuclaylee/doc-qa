@@ -6,7 +6,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
-from src.core.vector_store import vector_store_manager
+from src.core.hybrid_search import hybrid_searcher
 from src.models.conversation import MessageRole
 from src.repository.conversation import conversation_repo
 from src.repository.document import document_repo
@@ -92,11 +92,19 @@ class ChatService:
             return
 
         # 2. 检索相关文档切片
-        retrieved_docs = await vector_store_manager.similarity_search(
+        # retrieved_docs = await vector_store_manager.similarity_search(
+        #     document_id=document_id,
+        #     query=question,
+        #     k=4,
+        # )
+        retrieved_docs = await hybrid_searcher.search(
+            db=db,
             document_id=document_id,
             query=question,
             k=4,
+            fetch_k=20,
         )
+
         context = "\n\n".join([d.page_content for d in retrieved_docs])
         logger.debug(f"检索到 {len(retrieved_docs)} 个切片 session={session_id}")
 

@@ -42,8 +42,10 @@ async def _process_document_async(
 
     from src.core.config import settings
     from src.core.embedding import embedding_manager
+    from src.core.vector_store import vector_store_manager
     from src.db.session import db_manager
     from src.models.document import DocumentStatus
+    from src.repository.chunk import chunk_repo
     from src.repository.document import document_repo
     from src.service.document import DocumentService
 
@@ -73,6 +75,11 @@ async def _process_document_async(
         try:
             svc = DocumentService()
             chunk_count = await svc._process(document_id, file_type, file_bytes)
+
+            # 从 Chroma 取出切片内容存入 PostgreSQL
+            chunks = await vector_store_manager.get_all_chunks(document_id)
+            await chunk_repo.bulk_create(db, document_id, chunks)
+
             await document_repo.update_status(
                 db, document_id, DocumentStatus.DONE, chunk_count=chunk_count
             )

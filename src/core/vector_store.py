@@ -70,6 +70,12 @@ class VectorStoreManager:
         client = self._get_chroma_client()
         client.delete_collection(self._get_collection_name(document_id))
 
+    async def get_all_chunks(self, document_id: int) -> list[str]:
+        """取出文档在 Chroma 里的所有切片文本"""
+        store = self._get_store(document_id)
+        result = store.get(include=["documents"])
+        return result["documents"] or []
+
 
 # 全局实例
 vector_store_manager = VectorStoreManager()
