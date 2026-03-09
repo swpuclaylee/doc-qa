@@ -6,21 +6,37 @@ from langgraph.prebuilt import create_react_agent
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.agent.tools import calculator, get_current_time, get_search_document_tool
+from src.agent.tools import calculator, get_current_time, get_search_document_tool, get_search_documents_tool
 from src.core.config import settings
 from src.models.conversation import MessageRole
 from src.core.summary_memory import summary_memory_manager
 
+# SYSTEM_PROMPT = """你是一个专业的文档问答助手。
+#
+# 你有以下工具可以使用：
+# - search_document：在文档中检索相关内容，回答文档相关问题时必须调用
+# - get_current_time：获取当前时间
+# - calculator：数学计算
+#
+# 工作原则：
+# - 回答文档相关问题时，必须先调用 search_document 检索，基于检索结果回答
+# - 如果检索结果中没有相关信息，明确告知用户
+# - 不要编造文档中没有的内容
+# - 回答简洁、准确、有条理
+# """
+
 SYSTEM_PROMPT = """你是一个专业的文档问答助手。
 
 你有以下工具可以使用：
-- search_document：在文档中检索相关内容，回答文档相关问题时必须调用
+- search_documents：在一组文档中检索相关内容，回答文档相关问题时必须调用
 - get_current_time：获取当前时间
 - calculator：数学计算
 
 工作原则：
-- 回答文档相关问题时，必须先调用 search_document 检索，基于检索结果回答
+- 回答文档相关问题时，必须先调用 search_documents 检索，基于检索结果回答
+- 检索结果中会标注每个片段来自哪个文档（文档ID），回答时可以提及信息来源
 - 如果检索结果中没有相关信息，明确告知用户
+- 如果多个文档都有相关信息，综合各文档内容给出完整回答
 - 不要编造文档中没有的内容
 - 回答简洁、准确、有条理
 """
@@ -142,10 +158,90 @@ class AgentRunner:
     #         f"answer_len={len(''.join(full_response))}"
     #     )
 
+    # async def run_stream(
+    #     self,
+    #     db: AsyncSession,
+    #     document_id: int,
+    #     session_id: str,
+    #     question: str,
+    #     history: list,
+    #     redis_client,
+    # ) -> AsyncGenerator[str, None]:
+    #     """
+    #     流式执行 Agent（LangGraph ReAct 实现）
+    #
+    #     执行过程：
+    #     1. LLM 收到消息，判断是否需要调用工具
+    #     2. 如需要，调用工具获取结果（不 yield）
+    #     3. 将工具结果拼入上下文，生成最终回答（逐 token yield）
+    #
+    #     事件过滤逻辑：
+    #     - langgraph_node == "agent"：LLM 推理节点产生的事件
+    #     - not chunk.tool_call_chunks：排除工具调用决策片段，只取文字回答
+    #     """
+    #     # 1. 读取已有摘要
+    #     existing_summary = await redis_client.get(f"summary:{session_id}") or ""
+    #     if isinstance(existing_summary, bytes):
+    #         existing_summary = existing_summary.decode()
+    #
+    #     # 2. 判断是否需要压缩
+    #     summary, recent_history = await summary_memory_manager.compress(
+    #         session_id=session_id,
+    #         history=history,
+    #         existing_summary=existing_summary,
+    #         redis_client=redis_client,
+    #     )
+    #
+    #     # 3. 组装消息（传入摘要 + 近期历史）
+    #     messages = self._build_messages(recent_history, question, summary=summary)
+    #
+    #     tools = [
+    #         get_search_document_tool(document_id, db),
+    #         get_current_time,
+    #         calculator,
+    #     ]
+    #
+    #     llm = self._build_llm()
+    #
+    #     # create_react_agent 是 LangChain 1.x 的推荐替代方案
+    #     # 取代了已移除的 AgentExecutor + create_tool_calling_agent
+    #     agent = create_react_agent(model=llm, tools=tools)
+    #
+    #     full_response = []
+    #
+    #     try:
+    #         async for event in agent.astream_events(
+    #             {"messages": messages},
+    #             # recursion_limit=10 约等于旧版 max_iterations=5
+    #             # LangGraph 每轮工具调用占 2 步（LLM决策 + 工具执行）
+    #             config={"recursion_limit": 10},
+    #             version="v2",
+    #         ):
+    #             if (
+    #                 event["event"] == "on_chat_model_stream"
+    #                 and event["metadata"].get("langgraph_node") == "agent"
+    #             ):
+    #                 chunk = event["data"]["chunk"]
+    #                 # tool_call_chunks 非空 → LLM 正在生成工具调用参数，跳过
+    #                 # content 非空且无 tool_call_chunks → 最终文字回答，yield
+    #                 if chunk.content and not chunk.tool_call_chunks:
+    #                     full_response.append(chunk.content)
+    #                     yield chunk.content
+    #
+    #     except Exception as e:
+    #         logger.error(f"Agent 执行失败: session={session_id} error={e}")
+    #         yield f"\n\n[错误：{str(e)}]"
+    #         return
+    #
+    #     logger.info(
+    #         f"Agent 执行完成: session={session_id} "
+    #         f"answer_len={len(''.join(full_response))}"
+    #     )
+
     async def run_stream(
         self,
         db: AsyncSession,
-        document_id: int,
+        document_ids: list[int],
         session_id: str,
         question: str,
         history: list,
@@ -180,7 +276,7 @@ class AgentRunner:
         messages = self._build_messages(recent_history, question, summary=summary)
 
         tools = [
-            get_search_document_tool(document_id, db),
+            get_search_documents_tool(document_ids, db),
             get_current_time,
             calculator,
         ]

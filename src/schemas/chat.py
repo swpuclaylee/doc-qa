@@ -6,9 +6,12 @@ from src.models.conversation import MessageRole
 
 
 class ChatRequest(BaseModel):
-    """问答请求"""
-
-    document_id: int = Field(..., description="文档 ID")
+    document_ids: list[int] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+        description="文档 ID 列表（1-10个）",
+    )
     session_id: str = Field(..., description="会话 ID，同一会话保持一致")
     question: str = Field(..., min_length=1, max_length=2000, description="用户问题")
 
@@ -30,5 +33,5 @@ class ChatHistoryOut(BaseModel):
     """对话历史列表"""
 
     session_id: str
-    document_id: int
+    document_ids: list[int]
     messages: list[ConversationOut]

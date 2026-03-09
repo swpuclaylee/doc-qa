@@ -1,4 +1,5 @@
 import jieba
+import asyncio
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +55,70 @@ class HybridSearcher:
         candidates = self._rrf_fusion(vector_results, bm25_results, k=fetch_k)
 
         # 4. Rerank 精排，从 Top-20 里取 Top-K
+        if candidates:
+            texts = [doc.page_content for doc in candidates]
+            top_indices = reranker.rerank(query, texts, top_k=k)
+            return [candidates[i] for i in top_indices]
+
+        return candidates[:k]
+
+    async def search_multi(
+            self,
+            db: AsyncSession,
+            document_ids: list[int],
+            query: str,
+            k: int = 6,
+            fetch_k: int = 20,
+    ) -> list[Document]:
+        """
+        多文档联合检索
+
+        对每个文档并发执行 search()，合并结果后再做一轮 RRF 融合，
+        最后 Rerank 取 Top-K。
+
+        Args:
+            db: 数据库会话
+            document_ids: 文档 ID 列表
+            query: 用户问题
+            k: 最终返回的切片总数
+            fetch_k: 每个文档的检索候选数
+
+        Returns:
+            跨文档融合排序后的 Top-K Document 列表，
+            每条 Document.metadata 含 document_id 字段
+        """
+        if not document_ids:
+            return []
+
+        # 1. 并发对每个文档执行 search()
+        tasks = [
+            self.search(db=db, document_id=doc_id, query=query, k=fetch_k, fetch_k=fetch_k)
+            for doc_id in document_ids
+        ]
+        all_results: list[list[Document]] = await asyncio.gather(*tasks)
+
+        # 2. 为每条结果注入 document_id 元数据
+        tagged_results: list[list[Document]] = []
+        for doc_id, results in zip(document_ids, all_results):
+            tagged = []
+            for doc in results:
+                new_meta = dict(doc.metadata)
+                new_meta["document_id"] = doc_id
+                tagged.append(Document(page_content=doc.page_content, metadata=new_meta))
+            tagged_results.append(tagged)
+
+        # 3. 跨文档 RRF 融合（把所有文档的结果当作多路输入）
+        #    每个文档的检索结果作为独立的一路
+        if len(tagged_results) == 1:
+            candidates = tagged_results[0][:fetch_k]
+        else:
+            # 利用现有 _rrf_fusion 做两两融合
+            # 对于 3 个以上文档，逐步累积融合
+            candidates = tagged_results[0]
+            for i in range(1, len(tagged_results)):
+                candidates = self._rrf_fusion(candidates, tagged_results[i], k=fetch_k)
+
+        # 4. Rerank 精排
         if candidates:
             texts = [doc.page_content for doc in candidates]
             top_indices = reranker.rerank(query, texts, top_k=k)

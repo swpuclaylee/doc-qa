@@ -132,27 +132,28 @@ class ChatService:
         return "\n\n".join(lines)
 
     async def chat_stream(
-        self,
-        db: AsyncSession,
-        document_id: int,
-        session_id: str,
-        question: str,
+            self,
+            db: AsyncSession,
+            document_ids: list[int],  # ← 改为列表
+            session_id: str,
+            question: str,
     ) -> AsyncGenerator[str, None]:
-        # 1. 校验文档
-        doc = await document_repo.get(db, document_id)
-        if not doc:
-            yield "错误：文档不存在"
-            return
-        if doc.status.value != "done":
-            yield f"错误：文档尚未处理完成（当前状态：{doc.status.value}）"
-            return
+        # 1. 批量校验文档
+        for doc_id in document_ids:
+            doc = await document_repo.get(db, doc_id)
+            if not doc:
+                yield f"错误：文档 {doc_id} 不存在"
+                return
+            if doc.status.value != "done":
+                yield f"错误：文档 {doc_id} 尚未处理完成（当前状态：{doc.status.value}）"
+                return
 
         # 2. 拉取历史
         history = await conversation_repo.get_by_session(db, session_id)
 
-        # 3. 存用户消息
+        # 3. 存用户消息（document_ids 序列化后存入 document_ids 字段）
         await conversation_repo.add_message(
-            db, session_id, document_id, MessageRole.USER, question
+            db, session_id, document_ids, MessageRole.USER, question
         )
 
         # 4. 执行 Agent 流式推理
@@ -163,12 +164,12 @@ class ChatService:
 
         try:
             async for token in agent_runner.run_stream(
-                db=db,
-                document_id=document_id,
-                session_id=session_id,
-                question=question,
-                history=history,
-                redis_client=redis_cache,  # 新增
+                    db=db,
+                    document_ids=document_ids,  # ← 改为列表
+                    session_id=session_id,
+                    question=question,
+                    history=history,
+                    redis_client=redis_cache,
             ):
                 full_response.append(token)
                 yield token
@@ -184,17 +185,16 @@ class ChatService:
 
             if full_answer:
                 await conversation_repo.add_message(
-                    db, session_id, document_id, MessageRole.ASSISTANT, full_answer
+                    db, session_id, document_ids, MessageRole.ASSISTANT, full_answer
                 )
 
-            # 写链路日志
             await llm_trace_repo.create_trace(
                 db,
                 {
                     "session_id": session_id,
-                    "document_id": document_id,
+                    "document_id": document_ids[0],  # 取第一个作为主文档（兼容现有表结构）
                     "question": question,
-                    "retrieved_chunks": None,  # Agent 自主决定是否检索
+                    "retrieved_chunks": None,
                     "prompt": question,
                     "answer": full_answer,
                     "latency_ms": round(latency_ms, 2),
@@ -203,6 +203,79 @@ class ChatService:
                     "error_msg": error_msg,
                 },
             )
+
+    # async def chat_stream(
+    #     self,
+    #     db: AsyncSession,
+    #     document_id: int,
+    #     session_id: str,
+    #     question: str,
+    # ) -> AsyncGenerator[str, None]:
+    #     # 1. 校验文档
+    #     doc = await document_repo.get(db, document_id)
+    #     if not doc:
+    #         yield "错误：文档不存在"
+    #         return
+    #     if doc.status.value != "done":
+    #         yield f"错误：文档尚未处理完成（当前状态：{doc.status.value}）"
+    #         return
+    #
+    #     # 2. 拉取历史
+    #     history = await conversation_repo.get_by_session(db, session_id)
+    #
+    #     # 3. 存用户消息
+    #     await conversation_repo.add_message(
+    #         db, session_id, document_id, MessageRole.USER, question
+    #     )
+    #
+    #     # 4. 执行 Agent 流式推理
+    #     full_response = []
+    #     start_time = time.time()
+    #     status = "success"
+    #     error_msg = None
+    #
+    #     try:
+    #         async for token in agent_runner.run_stream(
+    #             db=db,
+    #             document_id=document_id,
+    #             session_id=session_id,
+    #             question=question,
+    #             history=history,
+    #             redis_client=redis_cache,  # 新增
+    #         ):
+    #             full_response.append(token)
+    #             yield token
+    #
+    #     except Exception as e:
+    #         status = "failed"
+    #         error_msg = str(e)
+    #         yield f"\n\n[错误：{str(e)}]"
+    #
+    #     finally:
+    #         latency_ms = (time.time() - start_time) * 1000
+    #         full_answer = "".join(full_response)
+    #
+    #         if full_answer:
+    #             await conversation_repo.add_message(
+    #                 db, session_id, document_id, MessageRole.ASSISTANT, full_answer
+    #             )
+    #
+    #         # 写链路日志
+    #         await llm_trace_repo.create_trace(
+    #             db,
+    #             {
+    #                 "session_id": session_id,
+    #                 "document_id": document_id,
+    #                 "question": question,
+    #                 "retrieved_chunks": None,  # Agent 自主决定是否检索
+    #                 "prompt": question,
+    #                 "answer": full_answer,
+    #                 "latency_ms": round(latency_ms, 2),
+    #                 "model_name": "deepseek-chat",
+    #                 "status": status,
+    #                 "error_msg": error_msg,
+    #             },
+    #         )
 
     # async def chat_stream(
     #     self,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,6 +53,20 @@ async def chat(
     )
 
 
+# @router.get(
+#     "/{session_id}",
+#     response_model=ResponseModel[ChatHistoryOut],
+#     summary="获取对话历史",
+# )
+# async def get_history(
+#     session_id: str,
+#     document_id: int,
+#     db: AsyncSession = Depends(get_db),
+# ):
+#     history = await chat_service.get_history(db, session_id, document_id)
+#     return ResponseModel(data=history)
+
+
 @router.get(
     "/{session_id}",
     response_model=ResponseModel[ChatHistoryOut],
@@ -60,10 +74,10 @@ async def chat(
 )
 async def get_history(
     session_id: str,
-    document_id: int,
+    document_ids: list[int] = Query(..., description="文档 ID 列表"),
     db: AsyncSession = Depends(get_db),
 ):
-    history = await chat_service.get_history(db, session_id, document_id)
+    history = await chat_service.get_history(db, session_id, document_ids)
     return ResponseModel(data=history)
 
 
