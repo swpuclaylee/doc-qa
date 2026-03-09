@@ -103,12 +103,12 @@ def verify_token(token: str, token_type: str = "access") -> dict[str, Any]:
 
         return payload
 
-    except JWTError:
+    except JWTError as err:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的认证凭证",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from err
 
 
 def decode_token(token: str) -> dict[str, Any] | None:

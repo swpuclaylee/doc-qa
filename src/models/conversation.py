@@ -1,4 +1,5 @@
 import enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -6,6 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import Base
 from src.models.mixins import TimestampMixin
+
+if TYPE_CHECKING:
+    from .document import Document
 
 
 class MessageRole(str, enum.Enum):

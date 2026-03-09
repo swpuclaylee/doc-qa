@@ -57,7 +57,9 @@ async def upload_document(
             file_bytes=file_bytes,
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
 
     return ResponseModel(data=doc, message="文档上传成功")
 

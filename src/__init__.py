@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.core.config import settings
+from src.core.config import STATIC_DIR, settings
 from src.core.events import lifespan
 from src.core.logger import setup_logger
 
@@ -61,9 +61,19 @@ def setup_cors(app: FastAPI):
 
 def register_routers(app: FastAPI) -> None:
     """注册路由"""
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
     from src.api.v1.router import api_v1_router
 
     app.include_router(api_v1_router, prefix=settings.API_PREFIX)
+
+    if STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def index():
+        return FileResponse(STATIC_DIR / "index.html")
 
 
 def register_middlewares(app: FastAPI):

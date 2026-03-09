@@ -90,7 +90,7 @@ services:
       - ANONYMIZED_TELEMETRY=false
     volumes:
       - /opt/doc-qa-data/chroma_data:/chroma/chroma
-    restart: unless-stopped
+    restart: always
     networks:
       - doc-qa-network
 
@@ -106,12 +106,14 @@ services:
     command: >
       celery -A src.core.celery_app.celery_app worker
       -l info
-      -P prefork
+      -P preforkc
       --concurrency=4
       --logfile=logs/celery.log
     depends_on:
       - doc-qa-postgresql
       - doc-qa-redis
+      - doc-qa-chroma
+      - doc-qa-minio
     networks:
       - doc-qa-network
 

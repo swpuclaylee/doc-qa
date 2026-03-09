@@ -14,7 +14,7 @@ class LLMTrace(TimestampMixin, Base):
         String(64), nullable=False, index=True, comment="会话 ID"
     )
     document_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, index=True, comment="文档 ID"
+        Integer, nullable=True, index=True, comment="文档 ID"
     )
     question: Mapped[str] = mapped_column(Text, nullable=False, comment="用户问题")
     retrieved_chunks: Mapped[str] = mapped_column(
