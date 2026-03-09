@@ -1,8 +1,8 @@
 import enum
 
 from sqlalchemy import Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import Base
 from src.models.mixins import TimestampMixin
@@ -32,7 +32,7 @@ class Conversation(TimestampMixin, Base):
     document_ids: Mapped[list] = mapped_column(  # 新增字段
         JSONB,
         nullable=False,
-        server_default='[]',
+        server_default="[]",
         comment="关联的多个文档 ID 列表",
     )
     role: Mapped[MessageRole] = mapped_column(

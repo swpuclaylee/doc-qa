@@ -41,12 +41,12 @@ class ConversationRepository(BaseRepository[Conversation]):
     #     )
 
     async def add_message(
-            self,
-            db: AsyncSession,
-            session_id: str,
-            document_ids: list[int] | int,  # 兼容新旧调用
-            role: MessageRole,
-            content: str,
+        self,
+        db: AsyncSession,
+        session_id: str,
+        document_ids: list[int] | int,  # 兼容新旧调用
+        role: MessageRole,
+        content: str,
     ) -> Conversation:
         # 统一转为列表
         if isinstance(document_ids, int):

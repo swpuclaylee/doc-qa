@@ -35,3 +35,11 @@ class ChatHistoryOut(BaseModel):
     session_id: str
     document_ids: list[int]
     messages: list[ConversationOut]
+
+
+class SourceRef(BaseModel):
+    """单条引用来源"""
+
+    document_id: int = Field(..., description="来源文档 ID")
+    chunk_index: int = Field(..., description="片段序号（从0开始）")
+    snippet: str = Field(..., description="片段内容前150字（用于展示）")

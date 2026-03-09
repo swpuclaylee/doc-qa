@@ -1,5 +1,6 @@
-import jieba
 import asyncio
+
+import jieba
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,12 +64,12 @@ class HybridSearcher:
         return candidates[:k]
 
     async def search_multi(
-            self,
-            db: AsyncSession,
-            document_ids: list[int],
-            query: str,
-            k: int = 6,
-            fetch_k: int = 20,
+        self,
+        db: AsyncSession,
+        document_ids: list[int],
+        query: str,
+        k: int = 6,
+        fetch_k: int = 20,
     ) -> list[Document]:
         """
         多文档联合检索
@@ -92,19 +93,23 @@ class HybridSearcher:
 
         # 1. 并发对每个文档执行 search()
         tasks = [
-            self.search(db=db, document_id=doc_id, query=query, k=fetch_k, fetch_k=fetch_k)
+            self.search(
+                db=db, document_id=doc_id, query=query, k=fetch_k, fetch_k=fetch_k
+            )
             for doc_id in document_ids
         ]
         all_results: list[list[Document]] = await asyncio.gather(*tasks)
 
         # 2. 为每条结果注入 document_id 元数据
         tagged_results: list[list[Document]] = []
-        for doc_id, results in zip(document_ids, all_results):
+        for doc_id, results in zip(document_ids, all_results, strict=False):
             tagged = []
             for doc in results:
                 new_meta = dict(doc.metadata)
                 new_meta["document_id"] = doc_id
-                tagged.append(Document(page_content=doc.page_content, metadata=new_meta))
+                tagged.append(
+                    Document(page_content=doc.page_content, metadata=new_meta)
+                )
             tagged_results.append(tagged)
 
         # 3. 跨文档 RRF 融合（把所有文档的结果当作多路输入）

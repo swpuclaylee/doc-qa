@@ -68,13 +68,43 @@ def get_search_document_tool(document_id: int, session_db):
     return search_document
 
 
-def get_search_documents_tool(document_ids: list[int], session_db):
-    """
-    动态创建多文档检索工具
+# def get_search_documents_tool(document_ids: list[int], session_db):
+#     """
+#     动态创建多文档检索工具
+#
+#     支持跨多个文档并发检索，结果以 RRF 融合后返回。
+#     每条结果标注来源文档 ID，为后续引用溯源做准备。
+#     """
+#     from src.core.hybrid_search import hybrid_searcher
+#
+#     @tool
+#     async def search_documents(query: str) -> str:
+#         """
+#         在指定的多个文档中检索与问题相关的内容。
+#         当用户询问文档相关内容时调用此工具。
+#         参数 query 是检索关键词或问题。
+#         """
+#         docs = await hybrid_searcher.search_multi(
+#             db=session_db,
+#             document_ids=document_ids,
+#             query=query,
+#             k=6,
+#             fetch_k=20,
+#         )
+#         if not docs:
+#             return "未找到相关内容"
+#
+#         results = []
+#         for i, doc in enumerate(docs, 1):
+#             doc_id = doc.metadata.get("document_id", "?")
+#             results.append(f"[片段{i} | 文档ID:{doc_id}]\n{doc.page_content}")
+#
+#         return "\n\n".join(results)
+#
+#     return search_documents
 
-    支持跨多个文档并发检索，结果以 RRF 融合后返回。
-    每条结果标注来源文档 ID，为后续引用溯源做准备。
-    """
+
+def get_search_documents_tool(document_ids: list[int], session_db):
     from src.core.hybrid_search import hybrid_searcher
 
     @tool
@@ -92,13 +122,30 @@ def get_search_documents_tool(document_ids: list[int], session_db):
             fetch_k=20,
         )
         if not docs:
-            return "未找到相关内容"
+            return "未找到相关内容\n__SOURCES__:[]"
 
         results = []
-        for i, doc in enumerate(docs, 1):
-            doc_id = doc.metadata.get("document_id", "?")
-            results.append(f"[片段{i} | 文档ID:{doc_id}]\n{doc.page_content}")
+        source_list = []
 
-        return "\n\n".join(results)
+        for i, doc in enumerate(docs, 1):
+            doc_id = doc.metadata.get("document_id", 0)
+            chunk_idx = doc.metadata.get("chunk_index", 0)
+            content = doc.page_content
+
+            results.append(f"[片段{i} | 文档ID:{doc_id} | 序号:{chunk_idx}]\n{content}")
+            source_list.append(
+                {
+                    "document_id": doc_id,
+                    "chunk_index": chunk_idx,
+                    "snippet": content[:150],
+                }
+            )
+
+        import json
+
+        # 将来源信息以特殊标记附在文本末尾，执行器解析时提取
+        text = "\n\n".join(results)
+        text += f"\n__SOURCES__:{json.dumps(source_list, ensure_ascii=False)}"
+        return text
 
     return search_documents

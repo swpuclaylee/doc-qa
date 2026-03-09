@@ -1,4 +1,4 @@
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
@@ -17,7 +17,6 @@ SUMMARIZE_PROMPT = """请将以下对话历史压缩为一段简洁的摘要（2
 
 
 class SummaryMemoryManager:
-
     def _build_llm(self) -> ChatOpenAI:
         return ChatOpenAI(
             model="deepseek-chat",
@@ -34,9 +33,9 @@ class SummaryMemoryManager:
     async def compress(
         self,
         session_id: str,
-        history: list,          # Conversation ORM 对象列表
+        history: list,  # Conversation ORM 对象列表
         existing_summary: str,  # 上一轮已存储的摘要，可为空字符串
-        redis_client,           # aioredis 客户端
+        redis_client,  # aioredis 客户端
     ) -> tuple[str, list]:
         """
         判断是否需要压缩，若需要则：

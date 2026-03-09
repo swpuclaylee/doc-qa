@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncGenerator
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -6,10 +7,15 @@ from langgraph.prebuilt import create_react_agent
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.agent.tools import calculator, get_current_time, get_search_document_tool, get_search_documents_tool
+from src.agent.tools import (
+    calculator,
+    get_current_time,
+    get_search_documents_tool,
+)
 from src.core.config import settings
-from src.models.conversation import MessageRole
 from src.core.summary_memory import summary_memory_manager
+from src.models.conversation import MessageRole
+from src.schemas.chat import SourceRef
 
 # SYSTEM_PROMPT = """你是一个专业的文档问答助手。
 #
@@ -71,18 +77,16 @@ class AgentRunner:
     #     return messages
 
     def _build_messages(
-            self,
-            history: list,
-            question: str,
-            summary: str = "",  # 新增参数
+        self,
+        history: list,
+        question: str,
+        summary: str = "",  # 新增参数
     ) -> list:
         messages = [SystemMessage(content=SYSTEM_PROMPT)]
 
         # 若有摘要，以 HumanMessage 形式插入（模拟对话上下文的前情提要）
         if summary:
-            messages.append(
-                HumanMessage(content=f"[以下是早期对话摘要，请作为背景信息参考]\n{summary}")
-            )
+            messages.append(HumanMessage(content=f"[以下是早期对话摘要，请作为背景信息参考]\n{summary}"))
             messages.append(AIMessage(content="好的，我已了解早期对话背景，请继续。"))
 
         for msg in history:
@@ -317,5 +321,104 @@ class AgentRunner:
             f"Agent 执行完成: session={session_id} "
             f"answer_len={len(''.join(full_response))}"
         )
+
+    async def run_stream_with_sources(
+        self,
+        db: AsyncSession,
+        document_ids: list[int],
+        session_id: str,
+        question: str,
+        history: list,
+        redis_client,
+    ) -> AsyncGenerator[str | list[SourceRef], None]:
+        """
+        流式执行 Agent，同时收集检索来源。
+
+        Yields:
+            str：正常回答 token
+            list[SourceRef]：最后 yield 一次来源列表（用 sentinel 区分）
+        """
+        # 1. 摘要压缩（不变）
+        existing_summary = await redis_client.get(f"summary:{session_id}") or ""
+        if isinstance(existing_summary, bytes):
+            existing_summary = existing_summary.decode()
+
+        summary, recent_history = await summary_memory_manager.compress(
+            session_id=session_id,
+            history=history,
+            existing_summary=existing_summary,
+            redis_client=redis_client,
+        )
+
+        # 2. 组装消息（不变）
+        messages = self._build_messages(recent_history, question, summary=summary)
+
+        tools = [
+            get_search_documents_tool(document_ids, db),
+            get_current_time,
+            calculator,
+        ]
+
+        llm = self._build_llm()
+        agent = create_react_agent(model=llm, tools=tools)
+
+        full_response = []
+        collected_sources: list[SourceRef] = []  # ← 新增：收集来源
+
+        try:
+            async for event in agent.astream_events(
+                {"messages": messages},
+                config={"recursion_limit": 10},
+                version="v2",
+            ):
+                event_type = event["event"]
+
+                # 收集工具执行结果，提取来源
+                if event_type == "on_tool_end":
+                    tool_output = event.get("data", {}).get("output", "")
+                    if isinstance(tool_output, str) and "__SOURCES__:" in tool_output:
+                        _, sources_json = tool_output.rsplit("__SOURCES__:", 1)
+                        try:
+                            raw_sources = json.loads(sources_json.strip())
+                            for s in raw_sources:
+                                source = SourceRef(
+                                    document_id=s["document_id"],
+                                    chunk_index=s["chunk_index"],
+                                    snippet=s["snippet"],
+                                )
+                                # 去重：同一文档同一片段只保留一次
+                                if not any(
+                                    x.document_id == source.document_id
+                                    and x.chunk_index == source.chunk_index
+                                    for x in collected_sources
+                                ):
+                                    collected_sources.append(source)
+                        except (json.JSONDecodeError, KeyError):
+                            pass  # 解析失败静默忽略
+
+                # 正常 token 输出（与之前相同）
+                if (
+                    event_type == "on_chat_model_stream"
+                    and event["metadata"].get("langgraph_node") == "agent"
+                ):
+                    chunk = event["data"]["chunk"]
+                    if chunk.content and not chunk.tool_call_chunks:
+                        full_response.append(chunk.content)
+                        yield chunk.content
+
+        except Exception as e:
+            logger.error(f"Agent 执行失败: session={session_id} error={e}")
+            yield f"\n\n[错误：{str(e)}]"
+            return
+
+        # 最后 yield 来源列表（调用方通过类型判断区分）
+        yield collected_sources
+
+        logger.info(
+            f"Agent 执行完成: session={session_id} "
+            f"answer_len={len(''.join(full_response))} "
+            f"sources_count={len(collected_sources)}"
+        )
+
 
 agent_runner = AgentRunner()
