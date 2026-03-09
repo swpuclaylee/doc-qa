@@ -13,7 +13,7 @@ from src.models.conversation import MessageRole
 from src.repository.conversation import conversation_repo
 from src.repository.document import document_repo
 from src.repository.llm_trace import llm_trace_repo
-from src.schemas.chat import ChatHistoryOut, ConversationOut, SourceRef
+from src.schemas.chat import ChatHistoryOut, ChatMode, ConversationOut, SourceRef
 
 SYSTEM_PROMPT = """你是一个专业的文档问答助手。
 请根据以下从文档中检索到的相关内容，回答用户的问题。
@@ -134,29 +134,31 @@ class ChatService:
     async def chat_stream(
         self,
         db: AsyncSession,
-        document_ids: list[int],
+        document_ids: list[int] | None,  # 改为可选
         session_id: str,
         question: str,
+        mode: ChatMode = ChatMode.DOC_QA,  # ← 新增参数
     ) -> AsyncGenerator[str, None]:
-        # 1. 批量校验文档（不变）
-        for doc_id in document_ids:
-            doc = await document_repo.get(db, doc_id)
-            if not doc:
-                yield f"错误：文档 {doc_id} 不存在"
-                return
-            if doc.status.value != "done":
-                yield f"错误：文档 {doc_id} 尚未处理完成（当前状态：{doc.status.value}）"
-                return
+        # 1. 文档校验（仅 doc_qa 模式）
+        if mode == ChatMode.DOC_QA:
+            for doc_id in document_ids or []:
+                doc = await document_repo.get(db, doc_id)
+                if not doc:
+                    yield f"错误：文档 {doc_id} 不存在"
+                    return
+                if doc.status.value != "done":
+                    yield f"错误：文档 {doc_id} 尚未处理完成（当前状态：{doc.status.value}）"
+                    return
 
-        # 2. 拉取历史（不变）
+        # 2. 拉取历史（两种模式相同）
         history = await conversation_repo.get_by_session(db, session_id)
 
-        # 3. 存用户消息（不变）
+        # 3. 存用户消息（document_ids 对 free_chat 为空列表）
         await conversation_repo.add_message(
-            db, session_id, document_ids, MessageRole.USER, question
+            db, session_id, document_ids or [], MessageRole.USER, question
         )
 
-        # 4. 执行 Agent，区分 token 和 sources
+        # 4. 执行 Agent
         full_response = []
         final_sources: list[SourceRef] = []
         start_time = time.time()
@@ -171,20 +173,20 @@ class ChatService:
                 question=question,
                 history=history,
                 redis_client=redis_cache,
+                mode=mode,  # ← 透传模式
             ):
                 if isinstance(item, list):
-                    # 最后一次 yield：来源列表
                     final_sources = item
-                    # 以特殊标记发送给上层（endpoint 解析后包装为 sources 事件）
-                    import json
+                    if mode == ChatMode.DOC_QA and final_sources:
+                        # 仅文档问答模式发送 sources 事件
+                        import json
 
-                    sources_json = json.dumps(
-                        [s.model_dump() for s in final_sources],
-                        ensure_ascii=False,
-                    )
-                    yield f"__SOURCES_EVENT__:{sources_json}"
+                        sources_json = json.dumps(
+                            [s.model_dump() for s in final_sources],
+                            ensure_ascii=False,
+                        )
+                        yield f"__SOURCES_EVENT__:{sources_json}"
                 else:
-                    # 普通 token
                     full_response.append(item)
                     yield item
 
@@ -199,10 +201,13 @@ class ChatService:
 
             if full_answer:
                 await conversation_repo.add_message(
-                    db, session_id, document_ids, MessageRole.ASSISTANT, full_answer
+                    db,
+                    session_id,
+                    document_ids or [],
+                    MessageRole.ASSISTANT,
+                    full_answer,
                 )
 
-            # 存储 sources 到 trace
             import json
 
             sources_json = (
@@ -218,9 +223,9 @@ class ChatService:
                 db,
                 {
                     "session_id": session_id,
-                    "document_id": document_ids[0] if document_ids else None,
+                    "document_id": (document_ids[0] if document_ids else None),
                     "question": question,
-                    "retrieved_chunks": sources_json,  # ← 存储来源结构
+                    "retrieved_chunks": sources_json,
                     "prompt": question,
                     "answer": full_answer,
                     "latency_ms": round(latency_ms, 2),
@@ -229,6 +234,105 @@ class ChatService:
                     "error_msg": error_msg,
                 },
             )
+
+    # async def chat_stream(
+    #     self,
+    #     db: AsyncSession,
+    #     document_ids: list[int],
+    #     session_id: str,
+    #     question: str,
+    # ) -> AsyncGenerator[str, None]:
+    #     # 1. 批量校验文档（不变）
+    #     for doc_id in document_ids:
+    #         doc = await document_repo.get(db, doc_id)
+    #         if not doc:
+    #             yield f"错误：文档 {doc_id} 不存在"
+    #             return
+    #         if doc.status.value != "done":
+    #             yield f"错误：文档 {doc_id} 尚未处理完成（当前状态：{doc.status.value}）"
+    #             return
+    #
+    #     # 2. 拉取历史（不变）
+    #     history = await conversation_repo.get_by_session(db, session_id)
+    #
+    #     # 3. 存用户消息（不变）
+    #     await conversation_repo.add_message(
+    #         db, session_id, document_ids, MessageRole.USER, question
+    #     )
+    #
+    #     # 4. 执行 Agent，区分 token 和 sources
+    #     full_response = []
+    #     final_sources: list[SourceRef] = []
+    #     start_time = time.time()
+    #     status = "success"
+    #     error_msg = None
+    #
+    #     try:
+    #         async for item in agent_runner.run_stream_with_sources(
+    #             db=db,
+    #             document_ids=document_ids,
+    #             session_id=session_id,
+    #             question=question,
+    #             history=history,
+    #             redis_client=redis_cache,
+    #         ):
+    #             if isinstance(item, list):
+    #                 # 最后一次 yield：来源列表
+    #                 final_sources = item
+    #                 # 以特殊标记发送给上层（endpoint 解析后包装为 sources 事件）
+    #                 import json
+    #
+    #                 sources_json = json.dumps(
+    #                     [s.model_dump() for s in final_sources],
+    #                     ensure_ascii=False,
+    #                 )
+    #                 yield f"__SOURCES_EVENT__:{sources_json}"
+    #             else:
+    #                 # 普通 token
+    #                 full_response.append(item)
+    #                 yield item
+    #
+    #     except Exception as e:
+    #         status = "failed"
+    #         error_msg = str(e)
+    #         yield f"\n\n[错误：{str(e)}]"
+    #
+    #     finally:
+    #         latency_ms = (time.time() - start_time) * 1000
+    #         full_answer = "".join(full_response)
+    #
+    #         if full_answer:
+    #             await conversation_repo.add_message(
+    #                 db, session_id, document_ids, MessageRole.ASSISTANT, full_answer
+    #             )
+    #
+    #         # 存储 sources 到 trace
+    #         import json
+    #
+    #         sources_json = (
+    #             json.dumps(
+    #                 [s.model_dump() for s in final_sources],
+    #                 ensure_ascii=False,
+    #             )
+    #             if final_sources
+    #             else None
+    #         )
+    #
+    #         await llm_trace_repo.create_trace(
+    #             db,
+    #             {
+    #                 "session_id": session_id,
+    #                 "document_id": document_ids[0] if document_ids else None,
+    #                 "question": question,
+    #                 "retrieved_chunks": sources_json,  # ← 存储来源结构
+    #                 "prompt": question,
+    #                 "answer": full_answer,
+    #                 "latency_ms": round(latency_ms, 2),
+    #                 "model_name": "deepseek-chat",
+    #                 "status": status,
+    #                 "error_msg": error_msg,
+    #             },
+    #         )
 
     # async def chat_stream(
     #         self,
