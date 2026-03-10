@@ -150,3 +150,5 @@ DELETE /api/v1/chat/{session_id}    清空对话历史
 
 >celery -A src.core.celery_app worker --loglevel=info -P solo --logfile=logs/celery.log
 
+## 构建后端镜像
+>sudo DOCKER_BUILDKIT=0 docker build -t doc-qa-backend:latest .

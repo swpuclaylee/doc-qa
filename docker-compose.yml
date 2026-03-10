@@ -14,6 +14,7 @@ services:
       - "20020:8000"
     volumes:
       - /opt/doc-qa:/app
+      - /opt/doc-qa-data/models:/model_cache/hub
     working_dir: /app
     command: >
       bash -c "alembic upgrade head || exit 1 && 
@@ -103,13 +104,15 @@ services:
     user: "root"
     volumes:
       - /opt/doc-qa:/app
+      - /opt/doc-qa-data/models:/model_cache/hub
     working_dir: /app
     command: >
+      bash -c "mkdir -p logs &&
       celery -A src.core.celery_app.celery_app worker
       -l info
-      -P preforkc
+      -P prefork
       --concurrency=4
-      --logfile=logs/celery.log
+      --logfile=logs/celery.log"
     depends_on:
       - doc-qa-postgresql
       - doc-qa-redis
