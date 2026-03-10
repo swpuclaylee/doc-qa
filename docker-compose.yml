@@ -97,7 +97,7 @@ services:
       - doc-qa-network
 
   # ==================== Celery Worker ====================
-  celery-worker:
+  doc-qa-celery-worker:
     image: doc-qa-backend:latest
     container_name: doc_qa_celery-worker
     restart: always
