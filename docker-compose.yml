@@ -111,7 +111,7 @@ services:
       celery -A src.core.celery_app.celery_app worker
       -l info
       -P prefork
-      --concurrency=4
+      --concurrency=1
       --logfile=logs/celery.log"
     depends_on:
       - doc-qa-postgresql

@@ -10,10 +10,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TRANSFORMERS_OFFLINE=1 \
     HF_DATASETS_OFFLINE=1
 
-RUN apt-get update && \
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
     build-essential \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*

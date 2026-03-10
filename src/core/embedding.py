@@ -21,6 +21,7 @@ class EmbeddingManager:
 
         self._model = HuggingFaceEmbeddings(
             model_name=settings.EMBEDDING_MODEL_NAME,
+            cache_folder="/model_cache/hub",
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},  # 归一化，余弦相似度计算更准确
         )
