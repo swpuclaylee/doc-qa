@@ -28,7 +28,7 @@ services:
     depends_on:
       - doc-qa-postgresql
       - doc-qa-redis
-      - doc-qa-minio
+      #- doc-qa-minio
     networks:
       - doc-qa-network
 
@@ -117,7 +117,7 @@ services:
       - doc-qa-postgresql
       - doc-qa-redis
       - doc-qa-chroma
-      - doc-qa-minio
+      #- doc-qa-minio
     networks:
       - doc-qa-network
 
