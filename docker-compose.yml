@@ -64,23 +64,23 @@ services:
       - doc-qa-network
 
   # ==================== MinIO ====================
-  doc-qa-minio:
-    image: minio/minio:latest
-    container_name: doc_qa_minio
-    restart: always
-    user: "root"
-    ports:
-      - "20024:9000"
-      - "20025:9001"
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
-      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
-    volumes:
-      - /opt/doc-qa-data/minio/data:/data
-      - /opt/doc-qa-data/minio/config:/root/.minio
-    command: server /data --console-address ":9001"
-    networks:
-      - doc-qa-network
+#  doc-qa-minio:
+#    image: minio/minio:latest
+#    container_name: doc_qa_minio
+#    restart: always
+#    user: "root"
+#    ports:
+#      - "20024:9000"
+#      - "20025:9001"
+#    environment:
+#      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+#      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+#    volumes:
+#      - /opt/doc-qa-data/minio/data:/data
+#      - /opt/doc-qa-data/minio/config:/root/.minio
+#    command: server /data --console-address ":9001"
+#    networks:
+#      - doc-qa-network
 
   # ==================== 向量数据库 ====================
   doc-qa-chroma:
