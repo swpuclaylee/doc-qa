@@ -124,6 +124,19 @@ def get_search_documents_tool(document_ids: list[int], session_db):
         if not docs:
             return "未找到相关内容\n__SOURCES__:[]"
 
+        # ── 新增：批量查询文档文件名（1 次 DB 查询）──────────────────────
+        from sqlalchemy import select
+        from src.models.document import Document as DocumentModel
+
+        unique_doc_ids = list({d.metadata.get("document_id", 0) for d in docs})
+        result = await session_db.execute(
+            select(DocumentModel.id, DocumentModel.filename).where(
+                DocumentModel.id.in_(unique_doc_ids)
+            )
+        )
+        filename_map: dict[int, str] = {row.id: row.filename for row in result}
+        # ─────────────────────────────────────────────────────────────────
+
         results = []
         source_list = []
 
@@ -131,6 +144,7 @@ def get_search_documents_tool(document_ids: list[int], session_db):
             doc_id = doc.metadata.get("document_id", 0)
             chunk_idx = doc.metadata.get("chunk_index", 0)
             content = doc.page_content
+            filename = filename_map.get(doc_id, f"文档#{doc_id}")
 
             results.append(f"[片段{i} | 文档ID:{doc_id} | 序号:{chunk_idx}]\n{content}")
             source_list.append(
@@ -138,6 +152,7 @@ def get_search_documents_tool(document_ids: list[int], session_db):
                     "document_id": doc_id,
                     "chunk_index": chunk_idx,
                     "snippet": content[:150],
+                    "filename": filename,
                 }
             )
 

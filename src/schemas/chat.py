@@ -73,3 +73,4 @@ class SourceRef(BaseModel):
     document_id: int = Field(..., description="来源文档 ID")
     chunk_index: int = Field(..., description="片段序号（从0开始）")
     snippet: str = Field(..., description="片段内容前150字（用于展示）")
+    filename: str = Field(default="", description="来源文档文件名")

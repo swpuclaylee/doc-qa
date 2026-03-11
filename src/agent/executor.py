@@ -506,6 +506,7 @@ class AgentRunner:
                                     document_id=s["document_id"],
                                     chunk_index=s["chunk_index"],
                                     snippet=s["snippet"],
+                                    filename=s.get("filename", ""),
                                 )
                                 if not any(
                                     x.document_id == source.document_id
