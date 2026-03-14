@@ -48,6 +48,17 @@ class ConversationRepository(BaseRepository[Conversation]):
         role: MessageRole,
         content: str,
     ) -> Conversation:
+        """
+        写入一条对话消息记录。
+
+        兼容新旧两种调用方式：
+        - 传入 int：单文档场景（旧版），转为列表后写入 document_ids
+        - 传入 list[int]：多文档场景（新版），直接写入 document_ids
+        document_id 字段始终存第一个 doc_id（保留向后兼容）。
+
+        Returns:
+            Conversation: 新创建的消息对象
+        """
         # 统一转为列表
         if isinstance(document_ids, int):
             doc_ids_list = [document_ids]

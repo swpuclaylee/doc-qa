@@ -9,6 +9,20 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     """请求上下文中间件"""
 
     async def dispatch(self, request: Request, call_next):
+        """
+        在每个请求进入时初始化请求上下文，响应返回时附加追踪头。
+
+        写入 request.state：
+        - request_id：来自 X-Request-ID 头或自动生成的 UUID
+        - start_time：请求开始时间戳
+        - client_ip：客户端真实 IP（考虑代理转发）
+        - user_agent：User-Agent 字符串
+        - user / user_id：初始化为 None（后续认证中间件填充）
+
+        响应头追加：
+        - X-Request-ID：请求追踪 ID
+        - X-Process-Time：请求处理耗时（秒，3位小数）
+        """
         # 1. 生成请求 ID
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id

@@ -29,8 +29,16 @@ def rate_limit(
     """
 
     def decorator(func):
+        """内层装饰器，接收被装饰的视图函数。"""
+
         @wraps(func)
         async def wrapper(request: Request, *args, **kwargs):
+            """
+            实际执行限流逻辑的异步包装函数。
+
+            按 target 类型生成限流 key（IP 优先读 X-Forwarded-For），
+            调用对应算法检查是否超限，超限时直接返回 429 响应。
+            """
             # 获取用户 ID（如果是用户限流）
             user_id = None
             if hasattr(request.state, "user"):

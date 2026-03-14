@@ -28,6 +28,15 @@ class EmbeddingManager:
 
     @property
     def model(self) -> HuggingFaceEmbeddings:
+        """
+        获取已初始化的 Embedding 模型实例。
+
+        Returns:
+            HuggingFaceEmbeddings: 可直接传给 Chroma 的 embedding 函数
+
+        Raises:
+            RuntimeError: 未调用 init() 时抛出
+        """
         if self._model is None:
             raise RuntimeError("Embedding 模型未初始化，请先调用 init()")
         return self._model

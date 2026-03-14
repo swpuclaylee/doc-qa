@@ -6,6 +6,11 @@ from src.models.document import DocumentStatus
 
 
 class DocumentBase(BaseModel):
+    """
+    文档基础字段（上传时的原始属性）。
+    作为 DocumentCreate 和 DocumentOut 的公共基类。
+    """
+
     filename: str
     file_type: str
     file_size: int

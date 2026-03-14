@@ -11,7 +11,22 @@ ENV_FILE = PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
-    """应用配置"""
+    """
+    应用配置（从 .env 文件读取，pydantic-settings 自动解析）。
+
+    分组说明：
+    - 项目信息：PROJECT_NAME、VERSION 等
+    - 数据库：DB_* 字段 + DATABASE_URL computed_field
+    - Redis：REDIS_* 字段 + REDIS_URL property
+    - JWT：SECRET_KEY、ALGORITHM、过期时间
+    - LLM：DEEPSEEK_API_KEY、DEEPSEEK_BASE_URL
+    - Chroma：CHROMA_HOST、CHROMA_PORT
+    - Embedding：EMBEDDING_MODEL_NAME
+    - Celery：CELERY_BROKER_URL / CELERY_RESULT_BACKEND（均复用 Redis）
+
+    生产环境通过 .env 文件覆盖默认值，敏感字段（SECRET_KEY、DB_PASSWORD 等）
+    不设默认值，强制在部署时指定。
+    """
 
     # 项目信息
     PROJECT_NAME: str = "智能文档问答系统"
@@ -122,7 +137,11 @@ class Settings(BaseSettings):
 # 使用 lru_cache 缓存配置，避免每次请求都重复读取 .env 文件
 @lru_cache
 def get_settings():
-    """获取应用配置"""
+    """
+    获取应用配置单例（lru_cache 确保全局只读取一次 .env）。
+
+    在 FastAPI 应用和 Celery Worker 中均通过 `settings = get_settings()` 使用。
+    """
     return Settings()
 
 

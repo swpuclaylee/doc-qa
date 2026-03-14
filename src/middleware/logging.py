@@ -17,6 +17,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         self.slow_threshold = slow_threshold
 
     async def dispatch(self, request: Request, call_next):
+        """
+        拦截每个 HTTP 请求，记录访问日志和耗时。
+
+        慢请求（超过 slow_threshold 秒）使用 WARNING 级别记录，
+        正常请求使用 INFO 级别记录。
+        日志绑定了 request_id、method、path、ip、user_id 等上下文字段。
+        """
         # 记录开始时间
         start_time = time.time()
 

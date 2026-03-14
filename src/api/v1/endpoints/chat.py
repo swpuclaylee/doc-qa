@@ -103,7 +103,23 @@ async def chat(
     req: ChatRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    流式问答接口（SSE）。
+
+    根据 req.mode 选择对应聊天模式，以 Server-Sent Events 格式推送回答：
+    - 普通 token：`data: {token}\\n\\n`
+    - 来源事件：`event: sources\\ndata: {json}\\n\\n`
+    - 结束标志：`data: [DONE]\\n\\n`
+
+    前端使用 fetch + ReadableStream 处理（不能用原生 EventSource，因为是 POST）。
+    """
+
     async def event_stream():
+        """
+        内部异步生成器，将 ChatService 的输出转换为 SSE 格式。
+
+        检测 __SOURCES_EVENT__: 前缀，区分来源事件和普通 token。
+        """
         async for item in chat_service.chat_stream(
             db=db,
             document_ids=req.document_ids,  # free_chat 时为 None
@@ -153,6 +169,11 @@ async def get_history(
     document_ids: list[int] = Query(..., description="文档 ID 列表"),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    获取指定会话的对话历史记录。
+
+    通过 document_ids query 参数过滤（支持多值，如 ?document_ids=1&document_ids=2）。
+    """
     history = await chat_service.get_history(db, session_id, document_ids)
     return ResponseModel(data=history)
 
@@ -166,5 +187,9 @@ async def clear_history(
     session_id: str,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    清空指定会话的全部对话记录（含 Redis 摘要缓存不会清除，仅清 DB）。
+    返回清除的记录条数。
+    """
     count = await chat_service.clear_history(db, session_id)
     return ResponseModel(message=f"已清空 {count} 条对话记录")

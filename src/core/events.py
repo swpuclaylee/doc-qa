@@ -13,7 +13,21 @@ from src.db.init_db import close_db, init_db
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    应用生命周期管理
+    FastAPI 应用生命周期管理（startup / shutdown）。
+
+    Startup 阶段（按顺序）：
+    1. 初始化 PostgreSQL 异步连接池（AsyncEngine）
+    2. 初始化 Redis 连接池
+    3. 加载 Embedding 模型到内存（bge-small-zh-v1.5，CPU，约需 10s）
+    4. 加载 Reranker 模型到内存（bge-reranker-base，CPU，可选）
+    5. 创建 static 目录（如不存在）
+
+    Shutdown 阶段：
+    - 关闭数据库连接池
+    - 关闭 Redis 连接池
+
+    注意：Embedding/Reranker 仅在 Web 进程中加载；
+    Celery Worker 通过 worker_process_init 信号独立初始化自己的资源。
     """
 
     # ========== 启动时 ==========

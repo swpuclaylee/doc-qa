@@ -7,6 +7,14 @@ from src.models.conversation import MessageRole
 
 
 class ChatMode(str, enum.Enum):
+    """
+    聊天模式枚举。
+
+    - DOC_QA：文档问答，需要指定 document_ids，使用 search_documents 工具
+    - FREE_CHAT：自由聊天，不使用检索工具，只有 calculator 和 get_current_time
+    - FREE_DOC_CHAT：文档自由问答，自动检索全库所有文档，无需指定 document_ids
+    """
+
     DOC_QA = "doc_qa"  # 文档问答（默认）
     FREE_CHAT = "free_chat"  # 自由聊天
     FREE_DOC_CHAT = "free_doc_chat"  # 文档自由聊天
@@ -48,7 +56,10 @@ class ChatRequest(BaseModel):
 
 
 class ConversationOut(BaseModel):
-    """单条对话记录"""
+    """
+    单条对话记录的响应模型（对应 Conversation ORM 对象）。
+    用于历史记录列表的序列化输出。
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -61,7 +72,10 @@ class ConversationOut(BaseModel):
 
 
 class ChatHistoryOut(BaseModel):
-    """对话历史列表"""
+    """
+    对话历史列表响应模型。
+    包含会话 ID、关联文档 ID 列表，以及有序的消息列表。
+    """
 
     session_id: str
     document_ids: list[int]
@@ -69,7 +83,10 @@ class ChatHistoryOut(BaseModel):
 
 
 class SourceRef(BaseModel):
-    """单条引用来源"""
+    """
+    单条答案引用来源，由 AgentRunner 从工具输出中解析 __SOURCES__: 标记得到。
+    最终通过 SSE event: sources 事件发送给前端展示引用卡片。
+    """
 
     document_id: int = Field(..., description="来源文档 ID")
     chunk_index: int = Field(..., description="片段序号（从0开始）")

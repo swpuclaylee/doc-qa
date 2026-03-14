@@ -1,7 +1,3 @@
-import time
-
-from src.core.cache.cache import get_redis
-
 """
 Redis 限流算法模块
 支持：
@@ -12,6 +8,10 @@ Redis 限流算法模块
 - 所有算法均使用 Redis 原子操作保证并发安全
 - 支持异步调用
 """
+
+import time
+
+from src.core.cache.cache import get_redis
 
 
 # ------------------------------

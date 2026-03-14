@@ -105,6 +105,19 @@ def get_search_document_tool(document_id: int, session_db):
 
 
 def get_search_documents_tool(document_ids: list[int], session_db):
+    """
+    动态创建多文档检索工具（运行时绑定 document_ids 和 db）。
+
+    为什么动态创建：
+    - document_ids 和 db session 在请求时才确定，无法静态注入
+    - 通过闭包捕获，每次请求生成一个新的 @tool 实例
+
+    返回的 search_documents 工具会：
+    1. 调用 HybridSearcher.search_multi() 执行混合检索
+    2. 批量查询文档文件名（1 次 SQL）
+    3. 将来源信息序列化为 __SOURCES__:[...] 附在文本末尾
+       （AgentRunner 解析 on_tool_end 事件时提取此标记）
+    """
     from src.core.hybrid_search import hybrid_searcher
 
     @tool

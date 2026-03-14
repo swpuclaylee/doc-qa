@@ -148,6 +148,15 @@ class HybridSearcher:
         4. RRF 融合后返回 top-k
 
         注意：全库数据量大时性能会下降，建议线上限制 fetch_k <= 30。
+
+        Args:
+            db: 数据库会话
+            query: 用户问题
+            k: 最终返回切片数
+            fetch_k: 每路检索的候选数量
+
+        Returns:
+            融合排序后的 Top-K Document 列表，每条含 document_id metadata
         """
         # 1. 取所有切片（BM25 需要全文本；同时提取 document_id 列表给向量检索用）
         all_chunks = await chunk_repo.get_all(db)
@@ -246,10 +255,21 @@ class HybridSearcher:
         k: int,
     ) -> list[Document]:
         """
-        RRF（倒数排名融合）算法
+        RRF（倒数排名融合）算法，合并两路检索结果。
 
         公式：score(d) = Σ 1 / (RRF_K + rank(d))
         rank 从 1 开始，排名越靠前分数越高。
+
+        去重策略：以文本内容前100字符为 key，相同内容只保留一条，
+        同时累加其在两路中的 RRF 分数。
+
+        Args:
+            vector_results: 向量检索结果列表（按相似度降序）
+            bm25_results: BM25 检索结果列表（按 BM25 分数降序）
+            k: 融合后返回的 Top-K 数量
+
+        Returns:
+            融合排序后的 Document 列表
         """
         scores: dict[str, float] = {}
         doc_map: dict[str, Document] = {}

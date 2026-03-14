@@ -32,6 +32,17 @@ MAX_HISTORY_TOKENS = 2000
 
 
 class ChatService:
+    """
+    聊天业务层，协调 Agent 执行、对话历史存储和链路日志记录。
+
+    主要职责：
+    - 校验文档状态（doc_qa 模式）
+    - 读取/写入对话历史（conversation_repo）
+    - 调用 AgentRunner 流式执行并转发 token
+    - 将 list[SourceRef] sentinel 转换为 __SOURCES_EVENT__ 标记（传给 endpoint）
+    - 在 finally 块写链路日志（llm_trace_repo），无论成功失败均记录
+    """
+
     def _build_llm(self) -> ChatOpenAI:
         """构建 LLM 实例"""
         return ChatOpenAI(
@@ -139,6 +150,23 @@ class ChatService:
         question: str,
         mode: ChatMode = ChatMode.DOC_QA,  # ← 新增参数
     ) -> AsyncGenerator[str, None]:
+        """
+        流式问答主方法，以 AsyncGenerator 形式 yield 内容。
+
+        数据流：
+          AgentRunner → str tokens → yield token
+                      → list[SourceRef] sentinel → yield "__SOURCES_EVENT__:{json}"
+
+        Args:
+            db: 数据库会话
+            document_ids: 文档 ID 列表（doc_qa 模式必填，其他模式可为 None）
+            session_id: 会话 ID
+            question: 用户问题
+            mode: 聊天模式（doc_qa / free_chat / free_doc_chat）
+
+        Yields:
+            str: 回答 token 或 "__SOURCES_EVENT__:{json}" 来源事件标记
+        """
         # 1. 文档校验（仅 doc_qa 模式）
         if mode == ChatMode.DOC_QA:
             for doc_id in document_ids or []:
@@ -597,7 +625,12 @@ class ChatService:
     async def get_history(
         self, db: AsyncSession, session_id: str, document_id: int
     ) -> ChatHistoryOut:
-        """获取对话历史"""
+        """
+        获取指定会话的对话历史。
+
+        Returns:
+            ChatHistoryOut: 包含会话 ID 和消息列表
+        """
         messages = await conversation_repo.get_by_session(db, session_id)
         return ChatHistoryOut(
             session_id=session_id,
@@ -606,7 +639,12 @@ class ChatService:
         )
 
     async def clear_history(self, db: AsyncSession, session_id: str) -> int:
-        """清空对话历史，返回删除条数"""
+        """
+        清空指定会话的所有对话记录。
+
+        Returns:
+            int: 实际删除的记录条数
+        """
         count = await conversation_repo.delete_by_session(db, session_id)
         logger.info(f"清空会话历史 session={session_id} count={count}")
         return count

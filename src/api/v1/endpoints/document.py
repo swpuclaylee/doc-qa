@@ -32,6 +32,13 @@ async def upload_document(
     file: UploadFile = File(..., description="支持 PDF、Word、TXT"),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    上传文档接口。
+
+    校验文件类型（PDF/Word/TXT）和大小（最大50MB），
+    然后调用 DocumentService.upload() 创建 DB 记录并异步触发 Celery 处理任务。
+    文档处理是异步的，上传成功后状态为 pending，前端需轮询状态接口。
+    """
     # 校验文件类型
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -74,6 +81,16 @@ async def list_documents(
     page_size: int = 20,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    分页查询文档列表。
+
+    Args:
+        page: 页码（从1开始）
+        page_size: 每页数量
+
+    Returns:
+        分页后的文档列表及总数
+    """
     skip = (page - 1) * page_size
     docs, total = await document_service.list_documents(db, skip=skip, limit=page_size)
 
@@ -96,6 +113,12 @@ async def delete_document(
     document_id: int,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    删除指定文档。
+
+    同时删除 PostgreSQL 元数据记录和 Chroma 向量数据（若已处理完成）。
+    文档不存在时返回 404。
+    """
     deleted = await document_service.delete(db, document_id)
     if not deleted:
         raise HTTPException(

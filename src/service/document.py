@@ -27,6 +27,16 @@ CHUNK_OVERLAP = 50  # 相邻切片的重叠字符数，保留上下文连续性
 
 
 class DocumentService:
+    """
+    文档业务层，负责文档上传、处理调度、列表查询和删除。
+
+    上传流程：
+    1. 校验文件类型
+    2. 在 PostgreSQL 创建文档记录（状态: PENDING）
+    3. base64 编码文件内容，通过 Celery 异步调度处理任务
+    Celery Worker 负责解析、切片、向量化，并更新状态为 DONE/FAILED。
+    """
+
     async def upload(
         self,
         db: AsyncSession,
@@ -155,7 +165,12 @@ class DocumentService:
     async def list_documents(
         self, db: AsyncSession, skip: int = 0, limit: int = 20
     ) -> tuple[list[DocumentOut], int]:
-        """文档列表"""
+        """
+        查询文档列表（分页）。
+
+        Returns:
+            tuple[list[DocumentOut], int]: (文档列表, 总数)
+        """
         docs, total = await document_repo.get_multi(db, skip=skip, limit=limit)
         return [DocumentOut.model_validate(d) for d in docs], total
 

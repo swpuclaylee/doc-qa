@@ -6,7 +6,14 @@ from src.models.mixins import TimestampMixin
 
 
 class DocumentChunk(TimestampMixin, Base):
-    """文档切片表"""
+    """
+    文档切片表（document_chunks）。
+
+    双存储设计：切片文本同时写入此表（PostgreSQL）和 Chroma 向量库。
+    - PostgreSQL：提供 BM25 关键词检索（jieba 分词 + rank_bm25）
+    - Chroma：提供向量相似度检索（bge-small-zh-v1.5 embedding）
+    两路结果通过 RRF 算法融合，实现混合检索。
+    """
 
     __tablename__ = "document_chunks"
 

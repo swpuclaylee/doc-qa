@@ -17,7 +17,20 @@ SUMMARIZE_PROMPT = """请将以下对话历史压缩为一段简洁的摘要（2
 
 
 class SummaryMemoryManager:
+    """
+    对话摘要记忆管理器。
+
+    当历史消息 token 总量超过 SUMMARY_TRIGGER_TOKENS 阈值时，
+    自动将早期消息压缩为摘要存入 Redis（key: summary:{session_id}，TTL 24h），
+    只保留最近 KEEP_RECENT 条消息参与后续对话。
+
+    摘要以 Human+AI 对话对形式注入到消息列表开头，作为"前情提要"。
+    """
+
     def _build_llm(self) -> ChatOpenAI:
+        """
+        构建用于生成摘要的 LLM（temperature=0 保证摘要稳定，非流式）。
+        """
         return ChatOpenAI(
             model="deepseek-chat",
             api_key=settings.DEEPSEEK_API_KEY,
@@ -27,6 +40,12 @@ class SummaryMemoryManager:
         )
 
     def _estimate_tokens(self, text: str) -> int:
+        """
+        粗略估算文本 token 数。
+
+        规则：中文字符 1字≈1token，英文/其他 4字符≈1token。
+        用于判断历史消息是否超出压缩阈值，不要求精确。
+        """
         chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         return chinese + (len(text) - chinese) // 4
 
