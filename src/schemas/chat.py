@@ -9,6 +9,7 @@ from src.models.conversation import MessageRole
 class ChatMode(str, enum.Enum):
     DOC_QA = "doc_qa"  # 文档问答（默认）
     FREE_CHAT = "free_chat"  # 自由聊天
+    FREE_DOC_CHAT = "free_doc_chat"  # 文档自由聊天
 
 
 class ChatRequest(BaseModel):

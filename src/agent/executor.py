@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.agent.tools import (
     calculator,
     get_current_time,
+    get_search_all_documents_tool,
     get_search_documents_tool,
 )
 from src.core.config import settings
@@ -60,6 +61,22 @@ FREE_CHAT_SYSTEM_PROMPT = """你是一个智能助手，可以回答各种问题
 - 如需数学计算，使用 calculator 工具
 - 如需当前时间，使用 get_current_time 工具
 - 回答准确、清晰、有帮助
+"""
+
+# 文档自由提示词
+FREE_DOC_CHAT_SYSTEM_PROMPT = """你是一个智能文档助手，可以检索知识库中的任意文档来回答问题。
+
+你有以下工具可以使用：
+- search_all_documents：在知识库全部文档中检索相关内容
+- get_current_time：获取当前时间
+- calculator：数学计算
+
+工作原则：
+- 回答知识库相关问题时，必须先调用 search_all_documents 检索
+- 检索结果会标注每个片段的来源文档，回答时可提及信息来源
+- 如果知识库中没有相关内容，明确告知用户并说明无法从文档中找到答案
+- 不要编造知识库中没有的内容
+- 回答简洁、准确、有条理
 """
 
 
@@ -467,6 +484,13 @@ class AgentRunner:
         if mode == ChatMode.FREE_CHAT:
             system_prompt = FREE_CHAT_SYSTEM_PROMPT
             tools = [get_current_time, calculator]
+        elif mode == ChatMode.FREE_DOC_CHAT:  # ← 新增
+            system_prompt = FREE_DOC_CHAT_SYSTEM_PROMPT
+            tools = [
+                get_search_all_documents_tool(db),  # ← 全库工具
+                get_current_time,
+                calculator,
+            ]
         else:
             system_prompt = SYSTEM_PROMPT
             tools = [
@@ -495,7 +519,10 @@ class AgentRunner:
                 event_type = event["event"]
 
                 # 仅 doc_qa 模式收集来源
-                if mode == ChatMode.DOC_QA and event_type == "on_tool_end":
+                if (
+                    mode in (ChatMode.DOC_QA, ChatMode.FREE_DOC_CHAT)
+                    and event_type == "on_tool_end"
+                ):
                     tool_output = event.get("data", {}).get("output", "")
                     if isinstance(tool_output, str) and "__SOURCES__:" in tool_output:
                         _, sources_json = tool_output.rsplit("__SOURCES__:", 1)

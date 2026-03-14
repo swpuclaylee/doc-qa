@@ -126,6 +126,7 @@ def get_search_documents_tool(document_ids: list[int], session_db):
 
         # ── 新增：批量查询文档文件名（1 次 DB 查询）──────────────────────
         from sqlalchemy import select
+
         from src.models.document import Document as DocumentModel
 
         unique_doc_ids = list({d.metadata.get("document_id", 0) for d in docs})
@@ -164,3 +165,66 @@ def get_search_documents_tool(document_ids: list[int], session_db):
         return text
 
     return search_documents
+
+
+def get_search_all_documents_tool(session_db):
+    """
+    动态创建全库文档检索工具（不限定文档范围）。
+    用于 free_doc_chat 模式，Agent 自行决定检索什么内容。
+    """
+    from src.core.hybrid_search import hybrid_searcher
+
+    @tool
+    async def search_all_documents(query: str) -> str:
+        """
+        在知识库全部文档中检索与问题相关的内容。
+        当用户询问任何知识库相关内容时调用此工具。
+        参数 query 是检索关键词或问题。
+        """
+        docs = await hybrid_searcher.search_all(
+            db=session_db,
+            query=query,
+            k=6,
+            fetch_k=20,
+        )
+        if not docs:
+            return "未找到相关内容\n__SOURCES__:[]"
+
+        # 批量查询文件名（复用 get_search_documents_tool 同款逻辑）
+        from sqlalchemy import select
+
+        from src.models.document import Document as DocumentModel
+
+        unique_doc_ids = list({d.metadata.get("document_id", 0) for d in docs})
+        result = await session_db.execute(
+            select(DocumentModel.id, DocumentModel.filename).where(
+                DocumentModel.id.in_(unique_doc_ids)
+            )
+        )
+        filename_map = {row.id: row.filename for row in result}
+
+        results = []
+        source_list = []
+        for i, doc in enumerate(docs, 1):
+            doc_id = doc.metadata.get("document_id", 0)
+            chunk_idx = doc.metadata.get("chunk_index", 0)
+            content = doc.page_content
+            filename = filename_map.get(doc_id, f"文档#{doc_id}")
+
+            results.append(f"[片段{i} | 文档:{filename} | 序号:{chunk_idx}]\n{content}")
+            source_list.append(
+                {
+                    "document_id": doc_id,
+                    "chunk_index": chunk_idx,
+                    "snippet": content[:150],
+                    "filename": filename,
+                }
+            )
+
+        import json
+
+        text = "\n\n".join(results)
+        text += f"\n__SOURCES__:{json.dumps(source_list, ensure_ascii=False)}"
+        return text
+
+    return search_all_documents

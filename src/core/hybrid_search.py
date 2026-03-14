@@ -131,6 +131,74 @@ class HybridSearcher:
 
         return candidates[:k]
 
+    async def search_all(
+        self,
+        db: AsyncSession,
+        query: str,
+        k: int = 6,
+        fetch_k: int = 20,
+    ) -> list[Document]:
+        """
+        跨全库检索，不限定文档范围。
+
+        实现思路：
+        1. 从 PostgreSQL 取所有切片，提取 distinct document_id 列表
+        2. 并发对每个文档的 Chroma collection 做向量检索，合并结果
+        3. 对全部切片做全库 BM25 检索
+        4. RRF 融合后返回 top-k
+
+        注意：全库数据量大时性能会下降，建议线上限制 fetch_k <= 30。
+        """
+        # 1. 取所有切片（BM25 需要全文本；同时提取 document_id 列表给向量检索用）
+        all_chunks = await chunk_repo.get_all(db)
+        if not all_chunks:
+            return []
+
+        # 2. 向量检索：并发查询每个文档的 Chroma collection
+        doc_ids = list({c.document_id for c in all_chunks})
+        vector_tasks = [
+            vector_store_manager.similarity_search(doc_id, query, k=fetch_k)
+            for doc_id in doc_ids
+        ]
+        vector_results_per_doc: list[list[Document]] = await asyncio.gather(
+            *vector_tasks
+        )
+
+        # 注入 document_id 元数据（collection 隔离导致原结果无此字段）
+        vector_docs: list[Document] = []
+        for doc_id, results in zip(doc_ids, vector_results_per_doc, strict=False):
+            for doc in results:
+                meta = dict(doc.metadata)
+                meta["document_id"] = doc_id
+                vector_docs.append(
+                    Document(page_content=doc.page_content, metadata=meta)
+                )
+
+        # 3. 全库 BM25 检索
+        corpus = [list(jieba.cut(c.content)) for c in all_chunks]
+        tokenized_query = list(jieba.cut(query))
+        bm25 = BM25Okapi(corpus)
+        scores = bm25.get_scores(tokenized_query)
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[
+            :fetch_k
+        ]
+        bm25_docs = [
+            Document(
+                page_content=all_chunks[i].content,
+                metadata={
+                    "document_id": all_chunks[i].document_id,
+                    "chunk_index": all_chunks[i].chunk_index,
+                    "source": "bm25",
+                },
+            )
+            for i in top_indices
+            if scores[i] > 0
+        ]
+
+        # 4. RRF 融合（注意 _rrf_fusion 需要 k 参数）
+        fused = self._rrf_fusion(vector_docs, bm25_docs, k=fetch_k)
+        return fused[:k]
+
     async def _bm25_search(
         self,
         db: AsyncSession,

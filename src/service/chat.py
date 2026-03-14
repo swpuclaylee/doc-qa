@@ -177,7 +177,10 @@ class ChatService:
             ):
                 if isinstance(item, list):
                     final_sources = item
-                    if mode == ChatMode.DOC_QA and final_sources:
+                    if (
+                        mode in (ChatMode.DOC_QA, ChatMode.FREE_DOC_CHAT)
+                        and final_sources
+                    ):
                         # 仅文档问答模式发送 sources 事件
                         import json
 

@@ -45,5 +45,12 @@ class ChunkRepository(BaseRepository[DocumentChunk]):
         )
         return list(result.scalars().all())
 
+    async def get_all(self, db: AsyncSession) -> list[DocumentChunk]:
+        """获取所有文档的全部切片，用于全库 BM25 检索"""
+        result = await db.execute(
+            select(self.model).order_by(self.model.document_id, self.model.chunk_index)
+        )
+        return list(result.scalars().all())
+
 
 chunk_repo = ChunkRepository()
