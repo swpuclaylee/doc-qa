@@ -75,22 +75,6 @@ class DocumentService:
             },
         )
 
-        # 3. 处理文档（解析 + 切片 + 向量化）
-        # try:
-        #     await document_repo.update_status(db, doc.id, DocumentStatus.PROCESSING)
-        #     chunk_count = await self._process(doc.id, file_type, file_bytes)
-        #     await document_repo.update_status(
-        #         db, doc.id, DocumentStatus.DONE, chunk_count=chunk_count
-        #     )
-        #     logger.info(f"文档处理完成: id={doc.id} filename={filename} chunks={chunk_count}")
-        #
-        # except Exception as e:
-        #     await document_repo.update_status(
-        #         db, doc.id, DocumentStatus.FAILED, error_msg=str(e)
-        #     )
-        #     logger.error(f"文档处理失败: id={doc.id} filename={filename} error={e}")
-        #     raise
-
         # 发送 Celery 任务（file_bytes 需要 base64 编码才能序列化）
         """
         Celery 任务参数通过 Redis 传递，必须是 JSON 可序列化的。
@@ -110,12 +94,6 @@ class DocumentService:
         Returns:
             切片数量
         """
-        # 用临时文件处理，langchain loader 需要文件路径
-        # with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=True) as tmp:
-        #     tmp.write(file_bytes)
-        #     tmp.flush()
-        #     chunks = self._load_and_split(tmp.name, file_type)
-
         # delete=False 避免 Windows 上文件被占用时删除报错，手动清理
         tmp_path = None
         try:

@@ -18,19 +18,19 @@ class VectorStoreManager:
         """每个文档用独立的 collection 存储"""
         return f"doc_{document_id}"
 
+    def _get_chroma_client(self):
+        """Chroma HTTP 客户端"""
+        return chromadb.HttpClient(
+            host=settings.CHROMA_HOST,
+            port=settings.CHROMA_PORT,
+        )
+
     def _get_store(self, document_id: int) -> Chroma:
         """获取指定文档的向量存储实例"""
         return Chroma(
             collection_name=self._get_collection_name(document_id),
             embedding_function=embedding_manager.model,
             client=self._get_chroma_client(),
-        )
-
-    def _get_chroma_client(self):
-        """Chroma HTTP 客户端"""
-        return chromadb.HttpClient(
-            host=settings.CHROMA_HOST,
-            port=settings.CHROMA_PORT,
         )
 
     async def add_documents(self, document_id: int, docs: list[Document]) -> int:
