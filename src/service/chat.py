@@ -1,14 +1,14 @@
 import time
 from collections.abc import AsyncGenerator
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+#from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+#from langchain_openai import ChatOpenAI
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.agent.executor import agent_runner
 from src.core.cache.redis_ops import redis_cache
-from src.core.config import settings
+#from src.core.config import settings
 from src.models.conversation import MessageRole
 from src.repository.conversation import conversation_repo
 from src.repository.document import document_repo
