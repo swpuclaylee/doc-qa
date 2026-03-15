@@ -202,7 +202,7 @@ class ChatService:
                 question=question,
                 history=history,
                 redis_client=redis_cache,
-                mode=mode,  # ← 透传模式
+                mode=mode,
             ):
                 if isinstance(item, list):
                     final_sources = item

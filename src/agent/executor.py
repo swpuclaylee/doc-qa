@@ -605,6 +605,11 @@ class AgentRunner:
                     and event_type == "on_tool_end"
                 ):
                     tool_output = event.get("data", {}).get("output", "")
+
+                    # 兼容新版本ToolMessage
+                    if hasattr(tool_output, "content"):
+                        tool_output = tool_output.content  # 取出字符串内容
+
                     if isinstance(tool_output, str) and "__SOURCES__:" in tool_output:
                         _, sources_json = tool_output.rsplit("__SOURCES__:", 1)
                         try:
