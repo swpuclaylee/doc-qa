@@ -1,3 +1,6 @@
+from src.core.config import settings
+
+
 class Reranker:
     """
     Rerank 重排序器
@@ -21,7 +24,7 @@ class Reranker:
         from sentence_transformers import CrossEncoder
 
         self._model = CrossEncoder(
-            "BAAI/bge-reranker-base",
+            settings.RERANKER_MODEL_NAME,
             max_length=512,
         )
 

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     - LLM：DEEPSEEK_API_KEY、DEEPSEEK_BASE_URL
     - Chroma：CHROMA_HOST、CHROMA_PORT
     - Embedding：EMBEDDING_MODEL_NAME
+    - Reranker: Reranker_MODEL_NAME
     - Celery：CELERY_BROKER_URL / CELERY_RESULT_BACKEND（均复用 Redis）
 
     生产环境通过 .env 文件覆盖默认值，敏感字段（SECRET_KEY、DB_PASSWORD 等）
@@ -116,6 +117,9 @@ class Settings(BaseSettings):
 
     # Embedding
     EMBEDDING_MODEL_NAME: str = "BAAI/bge-small-zh-v1.5"
+
+    # Reranker
+    RERANKER_MODEL_NAME: str = "BAAI/bge-reranker-base"
 
     # ========== Celery 配置 ==========
     @property
