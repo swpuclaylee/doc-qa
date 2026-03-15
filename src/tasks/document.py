@@ -23,7 +23,7 @@ def init_worker(**kwargs):
 
     from src.core.config import settings
     from src.core.embedding import embedding_manager
-    from src.core.reranker import reranker
+    # from src.core.reranker import reranker
     from src.db.session import db_manager
 
     _loop = asyncio.new_event_loop()
@@ -41,7 +41,7 @@ def init_worker(**kwargs):
 
     # 初始化模型
     embedding_manager.init()
-    reranker.init()
+    # reranker.init()
 
     logger.info("Worker 进程资源初始化完成")
 
