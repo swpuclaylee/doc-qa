@@ -1,4 +1,5 @@
 import asyncio
+from loguru import logger
 
 import jieba
 from langchain_core.documents import Document
@@ -98,11 +99,15 @@ class HybridSearcher:
             )
             for doc_id in document_ids
         ]
-        all_results: list[list[Document]] = await asyncio.gather(*tasks)
+        all_results: list[list[Document]] = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 2. 为每条结果注入 document_id 元数据
         tagged_results: list[list[Document]] = []
         for doc_id, results in zip(document_ids, all_results, strict=False):
+            if isinstance(results, Exception):
+                logger.warning(f"文档{doc_id}向量检索失败: {results}")
+                continue  # 跳过这个文档，继续处理其他的
+
             tagged = []
             for doc in results:
                 new_meta = dict(doc.metadata)
@@ -170,12 +175,17 @@ class HybridSearcher:
             for doc_id in doc_ids
         ]
         vector_results_per_doc: list[list[Document]] = await asyncio.gather(
-            *vector_tasks
+            *vector_tasks,
+            return_exceptions=True  # 报错不抛出，以异常对象形式返回
         )
 
         # 注入 document_id 元数据（collection 隔离导致原结果无此字段）
         vector_docs: list[Document] = []
         for doc_id, results in zip(doc_ids, vector_results_per_doc, strict=False):
+            if isinstance(results, Exception):
+                logger.warning(f"文档{doc_id}向量检索失败: {results}")
+                continue  # 跳过这个文档，继续处理其他的
+
             for doc in results:
                 meta = dict(doc.metadata)
                 meta["document_id"] = doc_id
