@@ -142,13 +142,14 @@ class ChatService:
     #         lines.append(f"[{role}]\n{msg.content}")
     #     return "\n\n".join(lines)
 
+    # 第五版（当前）：多模式
     async def chat_stream(
         self,
         db: AsyncSession,
-        document_ids: list[int] | None,  # 改为可选
+        document_ids: list[int] | None,
         session_id: str,
         question: str,
-        mode: ChatMode = ChatMode.DOC_QA,  # ← 新增参数
+        mode: ChatMode = ChatMode.DOC_QA,
     ) -> AsyncGenerator[str, None]:
         """
         流式问答主方法，以 AsyncGenerator 形式 yield 内容。
@@ -266,6 +267,7 @@ class ChatService:
                 },
             )
 
+    # 第四版：多文档，加来源信息
     # async def chat_stream(
     #     self,
     #     db: AsyncSession,
@@ -365,6 +367,7 @@ class ChatService:
     #             },
     #         )
 
+    # 第三版：多文档，Agent
     # async def chat_stream(
     #         self,
     #         db: AsyncSession,
@@ -438,6 +441,7 @@ class ChatService:
     #             },
     #         )
 
+    # 第二版：单文档，引入Agent
     # async def chat_stream(
     #     self,
     #     db: AsyncSession,
@@ -511,6 +515,7 @@ class ChatService:
     #             },
     #         )
 
+    # 第一版：单文档，手动RAG，直接调LLM
     # async def chat_stream(
     #     self,
     #     db: AsyncSession,
