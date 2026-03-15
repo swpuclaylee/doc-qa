@@ -43,69 +43,69 @@ class ChatService:
     - 在 finally 块写链路日志（llm_trace_repo），无论成功失败均记录
     """
 
-    def _build_llm(self) -> ChatOpenAI:
-        """构建 LLM 实例"""
-        return ChatOpenAI(
-            model="deepseek-chat",
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
-            temperature=0.3,
-            streaming=True,
-        )
+    # def _build_llm(self) -> ChatOpenAI:
+    #     """构建 LLM 实例"""
+    #     return ChatOpenAI(
+    #         model="deepseek-chat",
+    #         api_key=settings.DEEPSEEK_API_KEY,
+    #         base_url=settings.DEEPSEEK_BASE_URL,
+    #         temperature=0.3,
+    #         streaming=True,
+    #     )
 
-    def _estimate_tokens(self, text: str) -> int:
-        """
-        估算文本的 token 数
+    # def _estimate_tokens(self, text: str) -> int:
+    #     """
+    #     估算文本的 token 数
+    #
+    #     粗略规则：
+    #     - 中文字符：1 字 ≈ 1 token
+    #     - 英文/其他：4 字符 ≈ 1 token
+    #     """
+    #     chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    #     other_chars = len(text) - chinese_chars
+    #     return chinese_chars + other_chars // 4
 
-        粗略规则：
-        - 中文字符：1 字 ≈ 1 token
-        - 英文/其他：4 字符 ≈ 1 token
-        """
-        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
-        other_chars = len(text) - chinese_chars
-        return chinese_chars + other_chars // 4
-
-    def _build_messages(
-        self,
-        context: str,
-        history: list,
-        question: str,
-    ) -> list:
-        """
-        组装消息列表，按 token 预算动态截断历史
-
-        优先保留最近的对话，超出预算的早期消息直接丢弃。
-        """
-        messages = [SystemMessage(content=SYSTEM_PROMPT.format(context=context))]
-
-        # 从最新消息往最旧遍历，累计 token 数不超过预算
-        total_tokens = 0
-        trimmed_history = []
-
-        for msg in reversed(history):
-            tokens = self._estimate_tokens(msg.content)
-            if total_tokens + tokens > MAX_HISTORY_TOKENS:
-                break
-            trimmed_history.insert(0, msg)
-            total_tokens += tokens
-
-        if len(trimmed_history) < len(history):
-            logger.debug(
-                f"历史消息截断: 原始 {len(history)} 条 "
-                f"→ 保留 {len(trimmed_history)} 条 "
-                f"token 预算 {MAX_HISTORY_TOKENS}"
-            )
-
-        # 加入历史消息
-        for msg in trimmed_history:
-            if msg.role == MessageRole.USER:
-                messages.append(HumanMessage(content=msg.content))
-            else:
-                messages.append(AIMessage(content=msg.content))
-
-        # 加入当前问题
-        messages.append(HumanMessage(content=question))
-        return messages
+    # def _build_messages(
+    #     self,
+    #     context: str,
+    #     history: list,
+    #     question: str,
+    # ) -> list:
+    #     """
+    #     组装消息列表，按 token 预算动态截断历史
+    #
+    #     优先保留最近的对话，超出预算的早期消息直接丢弃。
+    #     """
+    #     messages = [SystemMessage(content=SYSTEM_PROMPT.format(context=context))]
+    #
+    #     # 从最新消息往最旧遍历，累计 token 数不超过预算
+    #     total_tokens = 0
+    #     trimmed_history = []
+    #
+    #     for msg in reversed(history):
+    #         tokens = self._estimate_tokens(msg.content)
+    #         if total_tokens + tokens > MAX_HISTORY_TOKENS:
+    #             break
+    #         trimmed_history.insert(0, msg)
+    #         total_tokens += tokens
+    #
+    #     if len(trimmed_history) < len(history):
+    #         logger.debug(
+    #             f"历史消息截断: 原始 {len(history)} 条 "
+    #             f"→ 保留 {len(trimmed_history)} 条 "
+    #             f"token 预算 {MAX_HISTORY_TOKENS}"
+    #         )
+    #
+    #     # 加入历史消息
+    #     for msg in trimmed_history:
+    #         if msg.role == MessageRole.USER:
+    #             messages.append(HumanMessage(content=msg.content))
+    #         else:
+    #             messages.append(AIMessage(content=msg.content))
+    #
+    #     # 加入当前问题
+    #     messages.append(HumanMessage(content=question))
+    #     return messages
 
     # def _build_messages(
     #     self,
@@ -134,13 +134,13 @@ class ChatService:
     #     messages.append(HumanMessage(content=question))
     #     return messages
 
-    def _format_prompt_for_trace(self, messages: list) -> str:
-        """把消息列表格式化为可读字符串，用于日志记录"""
-        lines = []
-        for msg in messages:
-            role = msg.__class__.__name__.replace("Message", "").upper()
-            lines.append(f"[{role}]\n{msg.content}")
-        return "\n\n".join(lines)
+    # def _format_prompt_for_trace(self, messages: list) -> str:
+    #     """把消息列表格式化为可读字符串，用于日志记录"""
+    #     lines = []
+    #     for msg in messages:
+    #         role = msg.__class__.__name__.replace("Message", "").upper()
+    #         lines.append(f"[{role}]\n{msg.content}")
+    #     return "\n\n".join(lines)
 
     async def chat_stream(
         self,

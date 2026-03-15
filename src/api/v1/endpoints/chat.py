@@ -125,7 +125,7 @@ async def chat(
             document_ids=req.document_ids,  # free_chat 时为 None
             session_id=req.session_id,
             question=req.question,
-            mode=req.mode,  # ← 新增透传
+            mode=req.mode,
         ):
             if item.startswith("__SOURCES_EVENT__:"):
                 sources_json = item[len("__SOURCES_EVENT__:") :]
