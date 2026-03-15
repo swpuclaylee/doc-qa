@@ -155,6 +155,40 @@ class AgentRunner:
         messages.append(HumanMessage(content=question))
         return messages
 
+    def _build_messages_with_prompt(
+        self,
+        history: list,
+        question: str,
+        summary: str = "",
+        system_prompt: str = SYSTEM_PROMPT,  # 默认使用文档问答提示
+    ) -> list:
+        """
+        组装消息列表（SYSTEM + 摘要 + 历史 + 当前问题）。
+
+        若有摘要，以 Human+AI 对话对形式注入，模拟"前情提要"，
+        避免直接插入 SystemMessage 导致 LangGraph 无法正确解析。
+
+        Args:
+            history: 近期历史消息（Conversation ORM 对象列表）
+            question: 当前用户问题
+            summary: 已压缩的早期历史摘要（可为空）
+            system_prompt: 系统提示词
+        """
+        messages = [SystemMessage(content=system_prompt)]
+
+        if summary:
+            messages.append(HumanMessage(content=f"[以下是早期对话摘要，请作为背景信息参考]\n{summary}"))
+            messages.append(AIMessage(content="好的，我已了解早期对话背景，请继续。"))
+
+        for msg in history:
+            if msg.role == MessageRole.USER:
+                messages.append(HumanMessage(content=msg.content))
+            else:
+                messages.append(AIMessage(content=msg.content))
+
+        messages.append(HumanMessage(content=question))
+        return messages
+
     # async def run_stream(
     #     self,
     #     db: AsyncSession,
@@ -566,7 +600,6 @@ class AgentRunner:
             ):
                 event_type = event["event"]
 
-                # 仅 doc_qa 模式收集来源
                 if (
                     mode in (ChatMode.DOC_QA, ChatMode.FREE_DOC_CHAT)
                     and event_type == "on_tool_end"
@@ -615,35 +648,6 @@ class AgentRunner:
             f"answer_len={len(''.join(full_response))} "
             f"sources_count={len(collected_sources)}"
         )
-
-    def _build_messages_with_prompt(
-        self,
-        history: list,
-        question: str,
-        summary: str = "",
-        system_prompt: str = SYSTEM_PROMPT,  # 默认使用文档问答提示
-    ) -> list:
-        """
-        组装输入消息列表，支持自定义系统提示。
-
-        相比原 _build_messages：
-        - 新增 system_prompt 参数，支持按模式切换
-        - 其余逻辑完全相同
-        """
-        messages = [SystemMessage(content=system_prompt)]
-
-        if summary:
-            messages.append(HumanMessage(content=f"[以下是早期对话摘要，请作为背景信息参考]\n{summary}"))
-            messages.append(AIMessage(content="好的，我已了解早期对话背景，请继续。"))
-
-        for msg in history:
-            if msg.role == MessageRole.USER:
-                messages.append(HumanMessage(content=msg.content))
-            else:
-                messages.append(AIMessage(content=msg.content))
-
-        messages.append(HumanMessage(content=question))
-        return messages
 
 
 agent_runner = AgentRunner()
