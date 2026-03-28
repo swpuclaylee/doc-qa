@@ -91,18 +91,6 @@ def register_middlewares(app: FastAPI):
 def register_exception_handlers(app: FastAPI):
     """注册异常处理器"""
 
-    @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-        """
-        处理 HTTPException
-
-        将 FastAPI 的 HTTPException 转换为统一响应格式
-        """
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"detail": exc.detail},
-        )
-
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
